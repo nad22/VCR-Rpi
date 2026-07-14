@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+  <section id="general" label="General">
+    <category id="gpio" label="GPIO">
+      <setting id="info_gpio" type="string" label="GPIO is configured via buttons.json" default="/storage/.kodi/userdata/addon_data/service.vcr.recorder/buttons.json"/>
+    </category>
+  </section>
+</settings>
