@@ -115,3 +115,10 @@ class KodiRpc:
             "timecode": timecode,
             "title": title,
         }
+
+    def get_audio_level(self):
+        result = self._call("Application.GetProperties", {"properties": ["volume", "muted"]})
+        props = result.get("result", {})
+        volume = int(props.get("volume", 0))
+        muted = bool(props.get("muted", False))
+        return 0 if muted else max(0, min(100, volume))

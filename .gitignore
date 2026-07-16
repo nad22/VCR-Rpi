@@ -28,6 +28,7 @@ dist/
 
 # Local runtime/config
 config/buttons.json
+config/display.json
 config/secrets.*
 
 # LibreELEC/Kodi runtime dumps

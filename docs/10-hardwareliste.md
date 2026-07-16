@@ -6,7 +6,7 @@
 2. MicroSD (32GB+, A1/A2)
 3. LibreELEC Installation (bereits vorhanden)
 4. Taster (mindestens 6: Play, Pause, Stop, FF, RW, Next)
-5. OLED Display 0.96 inch, SSD1306, I2C
+5. OLED Display 2.42 inch, SSD1309, I2C
 6. RFID Reader: PN532 USB Modul (v2)
 
 ## Optional, aber empfohlen
@@ -25,7 +25,7 @@
 ## Referenz-Wiring (im Repo umgesetzt)
 
 Raspberry Pi 4 (BCM Pin-Nummern):
-1. OLED SSD1306: SDA=GPIO2 (Pin 3), SCL=GPIO3 (Pin 5), 3.3V (Pin 1), GND (Pin 6)
+1. OLED SSD1309 2.42 inch: SDA=GPIO2 (Pin 3), SCL=GPIO3 (Pin 5), 3.3V (Pin 1), GND (Pin 6)
 2. Buttons (gegen GND):
    - Play/Pause: GPIO17
    - Stop: GPIO27

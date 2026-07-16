@@ -1,10 +1,14 @@
 {
+  "gpio": {
+    "backend": "sysfs",
+    "chip": "gpiochip0"
+  },
   "buttons": [
-    { "name": "play_pause", "source": "gpio", "pin": 17, "event": "PLAY_PAUSE", "action": "Player.PlayPause", "active_low": true, "debounce_ms": 50 },
-    { "name": "stop", "source": "gpio", "pin": 27, "event": "STOP", "action": "Player.Stop", "active_low": true, "debounce_ms": 50 },
-    { "name": "ff", "source": "gpio", "pin": 22, "event": "FF", "action": "Input.FastForward", "active_low": true, "debounce_ms": 50 },
-    { "name": "rw", "source": "gpio", "pin": 23, "event": "RW", "action": "Input.Rewind", "active_low": true, "debounce_ms": 50 },
-    { "name": "next", "source": "gpio", "pin": 24, "event": "NEXT", "action": "Player.GoNext", "active_low": true, "debounce_ms": 50 },
-    { "name": "prev", "source": "gpio", "pin": 25, "event": "PREV", "action": "Player.GoPrevious", "active_low": true, "debounce_ms": 50 }
+    { "name": "play_pause", "source": "gpio", "pin": 17, "event": "PLAY_PAUSE", "action": "Player.PlayPause", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "stop", "source": "gpio", "pin": 27, "event": "STOP", "action": "Player.Stop", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "ff", "source": "gpio", "pin": 22, "event": "FF", "action": "Input.FastForward", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "rw", "source": "gpio", "pin": 23, "event": "RW", "action": "Input.Rewind", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "next", "source": "gpio", "pin": 24, "event": "NEXT", "action": "Player.GoNext", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "prev", "source": "gpio", "pin": 25, "event": "PREV", "action": "Player.GoPrevious", "active_low": true, "pull": "up", "debounce_ms": 50 }
   ]
 }

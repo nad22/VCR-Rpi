@@ -26,7 +26,8 @@ Direct-on-Raspberry-Pi (current default):
 2. Read docs/50-verdrahtung-und-checkliste.md
 3. Read docs/30-installation-librelec.md
 4. Use config/deploy/buttons.json
-5. Install addon from libreelec/addons/service.vcr.recorder/
+5. Use config/deploy/display.json
+6. Install addon from libreelec/addons/service.vcr.recorder/
 
 ## Notes
 

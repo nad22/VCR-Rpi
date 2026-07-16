@@ -5,7 +5,7 @@ Optional PlatformIO firmware for an external controller board.
 ## Reference setup
 
 - MCU: ESP32 DevKit v1
-- OLED: SSD1306 128x64 over I2C
+- OLED: SSD1309 2.42 inch 128x64 over I2C
 - RFID: PN532 USB v2 connected to Raspberry Pi
 - Buttons: 6x momentary to GND (INPUT_PULLUP)
 

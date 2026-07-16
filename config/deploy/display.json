@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "driver": "ssd1309",
+  "bus": "auto",
+  "address": "0x3C",
+  "probe_mode": "cmd",
+  "invert": false,
+  "rotate180": false
+}

@@ -1,16 +1,14 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 
 #include "pins.h"
 
 namespace {
 constexpr int SCREEN_WIDTH = 128;
 constexpr int SCREEN_HEIGHT = 64;
-constexpr int OLED_RESET = -1;
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+U8G2_SSD1309_128X64_NONAME0_F_HW_I2C display(U8G2_R0, U8X8_PIN_NONE, PIN_I2C_SCL, PIN_I2C_SDA);
 
 struct Button {
   int pin;
@@ -35,28 +33,25 @@ char uiTimecode[16] = "00:00:00";
 char uiTitle[32] = "VCR Panel";
 
 void renderStatus(const char* line1, const char* line2) {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println(line1);
-  display.println(line2);
-  display.display();
+  display.clearBuffer();
+  display.setFont(u8g2_font_6x12_tf);
+  display.drawStr(0, 12, line1);
+  display.drawStr(0, 28, line2);
+  display.sendBuffer();
 }
 
 void renderUi() {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println(uiTitle);
-  display.setCursor(0, 20);
-  display.print("STATE: ");
-  display.println(uiState);
-  display.setCursor(0, 36);
-  display.print("TC: ");
-  display.println(uiTimecode);
-  display.display();
+  char line2[32];
+  char line3[32];
+  snprintf(line2, sizeof(line2), "STATE: %s", uiState);
+  snprintf(line3, sizeof(line3), "TC: %s", uiTimecode);
+
+  display.clearBuffer();
+  display.setFont(u8g2_font_6x12_tf);
+  display.drawStr(0, 12, uiTitle);
+  display.drawStr(0, 28, line2);
+  display.drawStr(0, 44, line3);
+  display.sendBuffer();
 }
 
 void setSafeText(char* dst, size_t dstSize, const String& src) {
@@ -108,10 +103,8 @@ void setup() {
     btn.lastChangeMs = millis();
   }
 
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-  if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    renderUi();
-  }
+  display.begin();
+  renderUi();
 }
 
 void loop() {
