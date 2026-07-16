@@ -1,0 +1,18 @@
+[Unit]
+Description=VCR Audio Level Analyzer
+After=network.target kodi.service sound.target
+Wants=sound.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/python3 /storage/.kodi/addons/service.vcr.recorder/tools/audio_level_writer.py --device alsa_output.1.hdmi-stereo.monitor --output /dev/shm/service.vcr.recorder/audio_levels.json
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+# Disabled by default for HDMI passthrough setups where no usable Pulse/ALSA capture source exists.

@@ -421,19 +421,19 @@ class SSD1309Display:
         pad = t + "      " + t
         return pad[offset:offset + vis_chars]
 
-    def _smooth_vu(self, current, target, attack=0.82, release=0.40):
+    def _smooth_vu(self, current, target, attack=0.90, release=0.58):
         if target >= current:
             return current + (target - current) * attack
         return current + (target - current) * release
 
-    def _update_peak(self, peak, level, hold_counter, hold_frames=9, decay=0.05):
+    def _update_peak(self, peak, level, hold_counter, hold_frames=1, decay=0.30):
         if level >= peak:
             return level, hold_frames
         if hold_counter > 0:
             return peak, hold_counter - 1
         return max(0.0, peak - decay), 0
 
-    def render_vfd(self, state, timecode, title, volume, tick):
+    def render_vfd(self, state, timecode, title, volume, tick, level_l=None, level_r=None):
         self.clear()
 
         # Layered bezel lines to get a denser VFD front-panel look.
@@ -465,14 +465,14 @@ class SSD1309Display:
         
         
 
-        # VFD-style stereo VU with smoothing and peak hold.
-        base = max(0, min(100, int(volume))) / 100.0
-        
-        
-        if (state or "").upper() in ("PLAY", "FF", "RW"):
-            base = max(base, 0.28)
-        target_l = max(0.0, min(1.0, base * (0.78 + 0.22 * math.sin(tick * 0.14))))
-        target_r = max(0.0, min(1.0, base * (0.78 + 0.22 * math.sin(tick * 0.14 + 1.35))))
+        # Honest VU: use explicit channel levels when available.
+        if level_l is not None and level_r is not None:
+            target_l = max(0.0, min(1.0, float(level_l) / 100.0))
+            target_r = max(0.0, min(1.0, float(level_r) / 100.0))
+        else:
+            base = max(0.0, min(1.0, float(volume) / 100.0))
+            target_l = base
+            target_r = base
         self._vu_l = self._smooth_vu(self._vu_l, target_l)
         self._vu_r = self._smooth_vu(self._vu_r, target_r)
         self._peak_l, self._peak_hold_l = self._update_peak(self._peak_l, self._vu_l, self._peak_hold_l)

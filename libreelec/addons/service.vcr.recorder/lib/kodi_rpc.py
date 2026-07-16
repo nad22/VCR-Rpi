@@ -48,8 +48,12 @@ class KodiRpc:
     def stop(self):
         player_id = self.get_active_player_id()
         if player_id is None:
+            self.execute_action("stop")
             return
-        self._call("Player.Stop", {"playerid": player_id})
+        try:
+            self._call("Player.Stop", {"playerid": player_id})
+        except Exception:
+            self.execute_action("stop")
 
     def goto_next(self):
         player_id = self.get_active_player_id()
@@ -62,6 +66,37 @@ class KodiRpc:
         if player_id is None:
             return
         self._call("Player.GoTo", {"playerid": player_id, "to": "previous"})
+
+    def seek_to_start(self):
+        player_id = self.get_active_player_id()
+        if player_id is None:
+            self.execute_action("skipprevious")
+            return
+        # For video playback, skipprevious is usually the most reliable way to jump
+        # to the beginning of the current item.
+        try:
+            self.execute_action("skipprevious")
+            return
+        except Exception:
+            pass
+
+        # Some Kodi builds differ in accepted seek value formats.
+        try:
+            self._call(
+                "Player.Seek",
+                {
+                    "playerid": player_id,
+                    "value": {"hours": 0, "minutes": 0, "seconds": 0, "milliseconds": 0},
+                },
+            )
+            return
+        except Exception:
+            pass
+
+        try:
+            self._call("Player.Seek", {"playerid": player_id, "value": 0})
+        except Exception:
+            self.execute_action("skipprevious")
 
     def execute_action(self, action):
         self._call("Input.ExecuteAction", {"action": action})
@@ -117,6 +152,7 @@ class KodiRpc:
         }
 
     def get_audio_level(self):
+        # Kodi JSON-RPC does not expose real-time per-channel PCM peak data.
         result = self._call("Application.GetProperties", {"properties": ["volume", "muted"]})
         props = result.get("result", {})
         volume = int(props.get("volume", 0))

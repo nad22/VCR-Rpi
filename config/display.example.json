@@ -4,6 +4,18 @@
   "bus": "auto",
   "address": "0x3C",
   "probe_mode": "cmd",
+  "audio_source": "kodi",
+  "audio_levels_file": "/dev/shm/service.vcr.recorder/audio_levels.json",
+  "ads1115": {
+    "bus": "auto",
+    "address": "0x48",
+    "channel_left": 0,
+    "channel_right": 1,
+    "gain": "4.096",
+    "sps": 860,
+    "bias": 16384,
+    "full_scale_delta": 6000
+  },
   "invert": false,
   "rotate180": false
 }

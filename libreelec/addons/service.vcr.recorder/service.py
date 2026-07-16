@@ -13,11 +13,13 @@ import xbmcvfs
 
 from lib.kodi_rpc import KodiRpc
 from lib.ssd1309_display import SSD1309Display
+from lib.ads1115_levels import ADS1115LevelReader
 
 
 ADDON = xbmcaddon.Addon()
 ADDON_ID = ADDON.getAddonInfo("id")
 DATA_DIR = xbmcvfs.translatePath(f"special://profile/addon_data/{ADDON_ID}")
+RAM_AUDIO_LEVELS_FILE = f"/dev/shm/{ADDON_ID}/audio_levels.json"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
@@ -48,6 +50,29 @@ def _read_text(path, default=""):
 def _write_text(path, value):
     with open(path, "w", encoding="utf-8") as f:
         f.write(str(value))
+
+
+def _read_external_audio_levels(path, max_age_sec=0.7):
+    try:
+        st = os.stat(path)
+        age = time.time() - st.st_mtime
+        if age > max_age_sec:
+            return None
+
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+
+        left = int(payload.get("left", payload.get("l", -1)))
+        right = int(payload.get("right", payload.get("r", -1)))
+        if left < 0 or right < 0:
+            return None
+
+        return {
+            "left": max(0, min(100, left)),
+            "right": max(0, min(100, right)),
+        }
+    except Exception:
+        return None
 
 
 class GpioButtonReader:
@@ -249,6 +274,7 @@ class GpioButtonReader:
 
             if pressed != st["pressed"]:
                 st["pressed"] = pressed
+                log(f"GPIO edge pin={pin} pressed={pressed}")
                 if pressed:
                     debounce_ms = int(btn.get("debounce_ms", 50))
                     if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
@@ -370,6 +396,9 @@ def build_button_mapping(cfg):
         if not event_name or not action:
             continue
         mapping[event_name.upper()] = action
+    if mapping:
+        pairs = ", ".join(f"{k}->{v}" for k, v in sorted(mapping.items()))
+        log(f"GPIO button mapping loaded: {pairs}")
     return mapping
 
 
@@ -387,8 +416,12 @@ def build_gpio_buttons(cfg):
 def dispatch_action(rpc, action):
     if action == "Player.PlayPause":
         rpc.play_pause()
-    elif action == "Player.Stop":
+    elif action in ("Player.Stop", "Input.Stop"):
+        # Try direct player stop first, then global stop action as fallback.
         rpc.stop()
+        rpc.execute_action("stop")
+    elif action in ("Player.SeekStart", "Player.GoStart", "goStart"):
+        rpc.seek_to_start()
     elif action == "Player.GoNext":
         rpc.goto_next()
     elif action == "Player.GoPrevious":
@@ -406,6 +439,7 @@ def run():
     rpc = KodiRpc()
     gpio_reader = None
     display = None
+    ads_reader = None
 
     buttons_cfg = {"buttons": []}
     button_map = {}
@@ -416,6 +450,10 @@ def run():
     last_state = ""
     last_timecode = ""
     last_volume = 0
+    last_audio_left = 0
+    last_audio_right = 0
+    audio_source = "kodi"
+    audio_levels_file = RAM_AUDIO_LEVELS_FILE
     next_volume_poll = 0.0
     tick = 0
     log("Service started")
@@ -433,10 +471,28 @@ def run():
                     "driver": "ssd1309",
                     "bus": "auto",
                     "address": "0x3C",
+                    "audio_source": "kodi",
+                    "audio_levels_file": RAM_AUDIO_LEVELS_FILE,
+                    "ads1115": {
+                        "bus": "auto",
+                        "address": "0x48",
+                        "channel_left": 0,
+                        "channel_right": 1,
+                        "gain": "4.096",
+                        "sps": 860,
+                        "bias": 16384,
+                        "full_scale_delta": 6000,
+                    },
                     "invert": False,
                     "rotate180": False,
                 },
             )
+            audio_source = str(display_cfg.get("audio_source", "auto")).lower()
+            audio_file_value = display_cfg.get("audio_levels_file", RAM_AUDIO_LEVELS_FILE)
+            if isinstance(audio_file_value, str) and audio_file_value.startswith("/"):
+                audio_levels_file = audio_file_value
+            else:
+                audio_levels_file = os.path.join(DATA_DIR, str(audio_file_value))
             next_cfg_reload = now + 5
 
             cfg_raw = json.dumps(buttons_cfg, sort_keys=True)
@@ -490,23 +546,78 @@ def run():
                         display = None
                         log(f"SSD1309 init failed: {exc}")
 
+                if ads_reader is not None:
+                    ads_reader.close()
+                    ads_reader = None
+                if audio_source == "ads1115":
+                    try:
+                        adc_cfg = display_cfg.get("ads1115", {})
+                        ads_reader = ADS1115LevelReader(
+                            bus=adc_cfg.get("bus", "auto"),
+                            address=adc_cfg.get("address", "0x48"),
+                            channel_left=adc_cfg.get("channel_left", 0),
+                            channel_right=adc_cfg.get("channel_right", 1),
+                            gain=adc_cfg.get("gain", "4.096"),
+                            sps=adc_cfg.get("sps", 860),
+                            bias=adc_cfg.get("bias", 16384),
+                            full_scale_delta=adc_cfg.get("full_scale_delta", 6000),
+                        )
+                        log(
+                            "ADS1115 audio source active: "
+                            f"dev={getattr(ads_reader, '_resolved_dev', 'unknown')} "
+                            f"addr={adc_cfg.get('address', '0x48')}"
+                        )
+                    except Exception as exc:
+                        ads_reader = None
+                        log(f"ADS1115 init failed: {exc}")
+
                 last_display_cfg_raw = display_cfg_raw
 
         if gpio_reader is not None:
             events = gpio_reader.read_events()
             for event in events:
-                action = button_map.get(event)
+                event_upper = str(event).upper()
+                action = button_map.get(event_upper)
+                if action is None:
+                    # Defensive fallback for misconfigured mappings.
+                    if event_upper == "STOP":
+                        action = "Player.Stop"
+                    elif event_upper == "PREV":
+                        action = "Player.GoPrevious"
+                    elif event_upper == "NEXT":
+                        action = "Player.GoNext"
+                    elif event_upper in ("GO_START", "GOSTART", "START"):
+                        action = "Player.GoStart"
                 if action:
                     dispatch_action(rpc, action)
-                    log(f"GPIO event {event} -> {action}")
+                    log(f"GPIO event {event_upper} -> {action}")
+                else:
+                    log(f"GPIO event {event_upper} has no action mapping")
 
         snapshot = rpc.get_playback_snapshot()
         if now >= next_volume_poll:
             try:
-                last_volume = rpc.get_audio_level()
+                levels = None
+                if audio_source == "ads1115" and ads_reader is not None:
+                    levels = ads_reader.read_levels()
+                elif audio_source in ("auto", "external"):
+                    levels = _read_external_audio_levels(audio_levels_file)
+
+                if levels is not None:
+                    last_audio_left = levels["left"]
+                    last_audio_right = levels["right"]
+                    last_volume = int((last_audio_left + last_audio_right) / 2)
+                elif audio_source in ("auto", "kodi"):
+                    last_volume = rpc.get_audio_level()
+                    last_audio_left = last_volume
+                    last_audio_right = last_volume
+                else:
+                    last_audio_left = 0
+                    last_audio_right = 0
+                    last_volume = 0
             except Exception as exc:
                 log(f"Audio level poll failed: {exc}")
-            next_volume_poll = now + 0.5
+            next_volume_poll = now + 0.1
 
         state = snapshot["state"]
         timecode = snapshot["timecode"]
@@ -522,6 +633,8 @@ def run():
                     timecode=snapshot["timecode"],
                     title=snapshot["title"],
                     volume=last_volume,
+                    level_l=last_audio_left,
+                    level_r=last_audio_right,
                     tick=tick,
                 )
             except Exception as exc:
@@ -539,6 +652,8 @@ def run():
 
     if gpio_reader is not None:
         gpio_reader.close()
+    if ads_reader is not None:
+        ads_reader.close()
     if display is not None:
         display.close()
 

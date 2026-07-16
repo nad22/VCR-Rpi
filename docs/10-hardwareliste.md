@@ -33,4 +33,5 @@ Raspberry Pi 4 (BCM Pin-Nummern):
    - RW: GPIO23
    - Next: GPIO24
    - Prev: GPIO25
+   - GoStart: GPIO26
 3. PN532 USB v2 direkt an Raspberry Pi USB Port
