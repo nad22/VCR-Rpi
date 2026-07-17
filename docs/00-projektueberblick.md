@@ -3,24 +3,27 @@
 ## Ziel
 
 Ein Raspberry Pi 4 mit LibreELEC soll sich wie ein klassischer VCR bedienen lassen:
-- Tasten am Geraet fuer Transportfunktionen
-- OLED fuer Status und Timecode
-- RFID Tags starten definierte Videos ueber Zaparoo
+- **Tasten am Gerät** + **drahtlose Fernbedienung** (ESP32) für Transportfunktionen
+- **OLED-Display** für Status und Timecode mit Dithering-Effekten
+- **Optischer Drehencoder** (Jog-Wheel) für präzises Spulen
+- **RFID Tags** starten definierte Videos über Zaparoo
 
 ## Kernkomponenten
 
-1. Kodi Service Addon auf LibreELEC
-2. Input-Layer (GPIO direkt oder externe MCU per USB)
-3. Display-Layer fuer OLED Updates
-4. Zaparoo RFID Mapping auf Kodi Aktionen
+1. **Kodi Service Addon** auf LibreELEC (Python)
+2. **Input-Layer** (GPIO am Pi + Bluetooth Remote vom ESP32)
+3. **Display-Layer** (SSD1309 OLED mit VFD-Rendering)
+4. **Audio-Layer** (ADS1115 ADC für echtes L/R VU-Meter)
+5. **ESP32 Firmware** (PlatformIO) für drahtlose Fernbedienung
+6. **Zaparoo RFID** Mapping auf Kodi Aktionen
 
 ## Betriebsmodi
 
-1. Standby
-2. Browsing
-3. Playing
-4. Paused
-5. Error/Offline
+1. **Standby** (Display zeigt Zeit)
+2. **Browsing** (Menü Navigation)
+3. **Playing** (Video läuft)
+4. **Paused** (Video pausiert)
+5. **Error/Offline** (Fehlerstate)
 
 ## Erste Milestones
 

@@ -1,0 +1,22 @@
+# PlatformIO
+.pio/
+.vscode/
+*.pyc
+
+# Build artifacts
+build/
+.buildpath
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Hardware uploads
+*.bin
+*.elf

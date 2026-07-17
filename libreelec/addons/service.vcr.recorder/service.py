@@ -14,6 +14,7 @@ import xbmcvfs
 from lib.kodi_rpc import KodiRpc
 from lib.ssd1309_display import SSD1309Display
 from lib.ads1115_levels import ADS1115LevelReader
+from lib.bluetooth_remote import BluetoothRemoteReader
 
 
 ADDON = xbmcaddon.Addon()
@@ -440,6 +441,7 @@ def run():
     gpio_reader = None
     display = None
     ads_reader = None
+    bt_reader = None
 
     buttons_cfg = {"buttons": []}
     button_map = {}
@@ -593,6 +595,80 @@ def run():
                     log(f"GPIO event {event_upper} -> {action}")
                 else:
                     log(f"GPIO event {event_upper} has no action mapping")
+
+        # Handle Bluetooth remote events
+        if bt_reader is None:
+            try:
+                bt_cfg = display_cfg.get("bluetooth_remote", {}) if isinstance(display_cfg, dict) else {}
+                bt_name = str(bt_cfg.get("device_name", "VCR_REMOTE")).strip() or "VCR_REMOTE"
+                bt_addr = str(bt_cfg.get("device_addr", "")).strip() or os.environ.get("VCR_REMOTE_ADDR")
+                bt_channels = bt_cfg.get("rfcomm_channels")
+                if bt_channels is None:
+                    bt_channels = [int(bt_cfg.get("rfcomm_channel", 1))]
+                bt_reader = BluetoothRemoteReader(
+                    device_name=bt_name,
+                    device_addr=bt_addr,
+                    rfcomm_channels=bt_channels,
+                )
+                if bt_reader.connect():
+                    log(
+                        "Bluetooth remote connected "
+                        f"name={bt_name} addr={bt_reader.device_addr} "
+                        f"channel={bt_reader.connected_channel}"
+                    )
+                else:
+                    bt_reader = None
+            except Exception as exc:
+                log(f"Bluetooth remote init failed: {exc}")
+                bt_reader = None
+        
+        if bt_reader is not None:
+            try:
+                events = bt_reader.read_events()
+                for event_str in events:
+                    event_str = str(event_str).strip().upper()
+                    if not event_str:
+                        continue
+                    
+                    # Handle SEEK events: SEEK:+10, SEEK:-30, etc.
+                    if event_str.startswith("SEEK:"):
+                        seek_str = event_str[5:]
+                        try:
+                            seek_seconds = int(float(seek_str))
+                            seek_ok = rpc.seek_relative(seek_seconds)
+                            if seek_ok:
+                                log(f"BT event SEEK {seek_seconds:+d}s")
+                            else:
+                                log(f"BT event SEEK rejected {seek_seconds:+d}s")
+                        except ValueError:
+                            log(f"BT event invalid SEEK value: {seek_str}")
+                    else:
+                        # Handle button events
+                        action = button_map.get(event_str)
+                        if action is None:
+                            # Fallback mappings
+                            if event_str == "STOP":
+                                action = "Player.Stop"
+                            elif event_str == "PREV":
+                                action = "Player.GoPrevious"
+                            elif event_str == "NEXT":
+                                action = "Player.GoNext"
+                            elif event_str in ("GO_START", "GOSTART", "START"):
+                                action = "Player.GoStart"
+                        
+                        if action:
+                            dispatch_action(rpc, action)
+                            log(f"BT event {event_str} -> {action}")
+                        else:
+                            log(f"BT event {event_str} has no action mapping")
+            except Exception as exc:
+                log(f"Bluetooth event read failed: {exc}")
+                if bt_reader:
+                    try:
+                        bt_reader.close()
+                    except Exception:
+                        pass
+                    bt_reader = None
 
         snapshot = rpc.get_playback_snapshot()
         if now >= next_volume_poll:
