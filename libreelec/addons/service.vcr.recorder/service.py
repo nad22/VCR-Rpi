@@ -445,7 +445,7 @@ def run():
 
     buttons_cfg = {"buttons": []}
     button_map = {}
-    next_cfg_reload = 0
+    next_cfg_reload = 0.0
     last_buttons_cfg_raw = ""
     last_display_cfg_raw = ""
 
@@ -456,12 +456,17 @@ def run():
     last_audio_right = 0
     audio_source = "kodi"
     audio_levels_file = RAM_AUDIO_LEVELS_FILE
+
+    vu_poll_interval = 0.01
     next_volume_poll = 0.0
     tick = 0
+    display_cfg = {}
+
     log("Service started")
 
     while not monitor.abortRequested():
         now = time.monotonic()
+
         if now >= next_cfg_reload:
             buttons_cfg = load_json("buttons.json", {"buttons": []})
             button_map = build_button_mapping(buttons_cfg)
@@ -483,12 +488,16 @@ def run():
                         "gain": "4.096",
                         "sps": 860,
                         "bias": 16384,
-                        "full_scale_delta": 6000,
+                        "full_scale_delta": 6,
+                        "noise_floor": 1,
+                        "samples_per_read": 2,
+                        "baseline_alpha": 0.10,
                     },
                     "invert": False,
                     "rotate180": False,
                 },
             )
+
             audio_source = str(display_cfg.get("audio_source", "auto")).lower()
             audio_file_value = display_cfg.get("audio_levels_file", RAM_AUDIO_LEVELS_FILE)
             if isinstance(audio_file_value, str) and audio_file_value.startswith("/"):
@@ -562,7 +571,10 @@ def run():
                             gain=adc_cfg.get("gain", "4.096"),
                             sps=adc_cfg.get("sps", 860),
                             bias=adc_cfg.get("bias", 16384),
-                            full_scale_delta=adc_cfg.get("full_scale_delta", 6000),
+                            full_scale_delta=adc_cfg.get("full_scale_delta", 6),
+                            noise_floor=adc_cfg.get("noise_floor", 1),
+                            samples_per_read=adc_cfg.get("samples_per_read", 2),
+                            baseline_alpha=adc_cfg.get("baseline_alpha", 0.10),
                         )
                         log(
                             "ADS1115 audio source active: "
@@ -581,7 +593,6 @@ def run():
                 event_upper = str(event).upper()
                 action = button_map.get(event_upper)
                 if action is None:
-                    # Defensive fallback for misconfigured mappings.
                     if event_upper == "STOP":
                         action = "Player.Stop"
                     elif event_upper == "PREV":
@@ -596,7 +607,6 @@ def run():
                 else:
                     log(f"GPIO event {event_upper} has no action mapping")
 
-        # Handle Bluetooth remote events
         if bt_reader is None:
             try:
                 bt_cfg = display_cfg.get("bluetooth_remote", {}) if isinstance(display_cfg, dict) else {}
@@ -621,7 +631,7 @@ def run():
             except Exception as exc:
                 log(f"Bluetooth remote init failed: {exc}")
                 bt_reader = None
-        
+
         if bt_reader is not None:
             try:
                 events = bt_reader.read_events()
@@ -629,8 +639,7 @@ def run():
                     event_str = str(event_str).strip().upper()
                     if not event_str:
                         continue
-                    
-                    # Handle SEEK events: SEEK:+10, SEEK:-30, etc.
+
                     if event_str.startswith("SEEK:"):
                         seek_str = event_str[5:]
                         try:
@@ -643,10 +652,8 @@ def run():
                         except ValueError:
                             log(f"BT event invalid SEEK value: {seek_str}")
                     else:
-                        # Handle button events
                         action = button_map.get(event_str)
                         if action is None:
-                            # Fallback mappings
                             if event_str == "STOP":
                                 action = "Player.Stop"
                             elif event_str == "PREV":
@@ -655,7 +662,7 @@ def run():
                                 action = "Player.GoNext"
                             elif event_str in ("GO_START", "GOSTART", "START"):
                                 action = "Player.GoStart"
-                        
+
                         if action:
                             dispatch_action(rpc, action)
                             log(f"BT event {event_str} -> {action}")
@@ -693,7 +700,7 @@ def run():
                     last_volume = 0
             except Exception as exc:
                 log(f"Audio level poll failed: {exc}")
-            next_volume_poll = now + 0.1
+            next_volume_poll = now + vu_poll_interval
 
         state = snapshot["state"]
         timecode = snapshot["timecode"]
@@ -723,7 +730,7 @@ def run():
 
         tick += 1
 
-        if monitor.waitForAbort(0.1):
+        if monitor.waitForAbort(vu_poll_interval):
             break
 
     if gpio_reader is not None:

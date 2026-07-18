@@ -421,7 +421,7 @@ class SSD1309Display:
         pad = t + "      " + t
         return pad[offset:offset + vis_chars]
 
-    def _smooth_vu(self, current, target, attack=0.90, release=0.58):
+    def _smooth_vu(self, current, target, attack=0.98, release=0.85):
         if target >= current:
             return current + (target - current) * attack
         return current + (target - current) * release

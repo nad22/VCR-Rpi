@@ -14,7 +14,10 @@
     "gain": "4.096",
     "sps": 860,
     "bias": 16384,
-    "full_scale_delta": 6000
+    "full_scale_delta": 6,
+    "noise_floor": 1,
+    "samples_per_read": 2,
+    "baseline_alpha": 0.10
   },
   "invert": false,
   "rotate180": false

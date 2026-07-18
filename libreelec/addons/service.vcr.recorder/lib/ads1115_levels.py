@@ -48,7 +48,10 @@ class ADS1115LevelReader:
         gain="4.096",
         sps=860,
         bias=16384,
-        full_scale_delta=6000,
+        full_scale_delta=6,
+        noise_floor=1,
+        samples_per_read=2,
+        baseline_alpha=0.10,
     ):
         self.bus = bus
         self.address = self._parse_address(address)
@@ -56,8 +59,19 @@ class ADS1115LevelReader:
         self.channel_right = int(channel_right)
         self.gain = str(gain)
         self.sps = int(sps)
-        self.bias = int(bias)
+        self.bias = float(bias)
         self.full_scale_delta = max(1, int(full_scale_delta))
+        self.noise_floor = max(0, int(noise_floor))
+        self.samples_per_read = max(2, int(samples_per_read))
+        self.baseline_alpha = min(0.2, max(0.0, float(baseline_alpha)))
+
+        self._baseline_by_channel = {
+            0: float(self.bias),
+            1: float(self.bias),
+            2: float(self.bias),
+            3: float(self.bias),
+        }
+        self._baseline_initialized = {0: False, 1: False, 2: False, 3: False}
 
         self.fd = None
         self._resolved_dev = None
@@ -148,14 +162,65 @@ class ADS1115LevelReader:
         config = 0x8000 | _MUX_SINGLE[channel] | pga_bits | 0x0100 | dr_bits | 0x0003
         self._write_config(self.fd, config)
 
-        # Wait a little longer than one conversion period.
-        wait_s = max(0.002, (1.0 / max(8, self.sps)) * 1.3)
+        # Keep latency low while still waiting for one full conversion cycle.
+        wait_s = max(0.0007, (1.0 / max(8, self.sps)) * 1.00)
         time.sleep(wait_s)
         return self._read_conversion(self.fd)
 
-    def _to_percent(self, raw_value):
-        # For biased AC front-end: use distance from bias point.
-        delta = abs(int(raw_value) - self.bias)
+    def _sample_burst(self, channel, count):
+        values = []
+        for _ in range(count):
+            values.append(self._sample_channel(channel))
+        return values
+
+    def _to_percent_from_window(self, channel, samples):
+        if not samples:
+            return 0
+
+        mean = sum(samples) / float(len(samples))
+        vmin = float(min(samples))
+        vmax = float(max(samples))
+
+        # AC estimate from local peak-to-peak window.
+        delta_ac = 0.5 * (vmax - vmin)
+
+        # DC/envelope estimate around per-channel baseline.
+        baseline = self._baseline_by_channel.get(channel, float(self.bias))
+        if not self._baseline_initialized.get(channel, False):
+            baseline = mean
+            self._baseline_by_channel[channel] = baseline
+            self._baseline_initialized[channel] = True
+
+        # Only adapt baseline when signal is low, so real program material is not cancelled.
+        quiet_threshold = float(self.noise_floor) * 3.0
+        if delta_ac < quiet_threshold:
+            a = self.baseline_alpha
+            baseline = (1.0 - a) * baseline + a * mean
+            self._baseline_by_channel[channel] = baseline
+
+        delta_dc = abs(mean - baseline)
+
+        # Small AC program material can be under-represented with very short windows,
+        # so bias the result toward the AC envelope while still honoring DC movement.
+        delta = max(delta_ac * 2.0, delta_dc)
+
+        # Remove fixed front-end noise floor.
+        delta = max(0.0, delta - float(self.noise_floor))
+
+        pct = int((delta / float(self.full_scale_delta)) * 100.0)
+        return max(0, min(100, pct))
+
+    def _legacy_to_percent(self, samples):
+        # Kept as fallback helper for troubleshooting.
+        mean = sum(samples) / float(len(samples))
+        peak_delta = 0.0
+        for v in samples:
+            d = abs(float(v) - mean)
+            if d > peak_delta:
+                peak_delta = d
+
+        # Subtract fixed ADC noise floor.
+        delta = max(0.0, peak_delta - float(self.noise_floor))
         pct = int((delta / float(self.full_scale_delta)) * 100.0)
         return max(0, min(100, pct))
 
@@ -163,13 +228,10 @@ class ADS1115LevelReader:
         if self.fd is None:
             return {"left": 0, "right": 0}
 
-        # Short peak hold over a few fast samples for stable meter movement.
-        left_peak = 0
-        right_peak = 0
-        for _ in range(3):
-            lv = self._sample_channel(self.channel_left)
-            rv = self._sample_channel(self.channel_right)
-            left_peak = max(left_peak, self._to_percent(lv))
-            right_peak = max(right_peak, self._to_percent(rv))
+        left_samples = self._sample_burst(self.channel_left, self.samples_per_read)
+        right_samples = self._sample_burst(self.channel_right, self.samples_per_read)
 
-        return {"left": left_peak, "right": right_peak}
+        return {
+            "left": self._to_percent_from_window(self.channel_left, left_samples),
+            "right": self._to_percent_from_window(self.channel_right, right_samples),
+        }
