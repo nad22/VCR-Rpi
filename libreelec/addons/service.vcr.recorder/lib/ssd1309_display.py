@@ -412,6 +412,58 @@ class SSD1309Display:
         self.fill_rect(x + 3, y + 5, 1, 1, True)
         self.fill_rect(x + 4, y + 6, 1, 1, True)
 
+    def _draw_cassette(self, x, y):
+        """Cassette tape icon, 26 × 18 px, matching the standard cassette symbol.
+
+        Layout:
+          - Outer rounded-rectangle border (1 px, 2 px corner radius)
+          - Two hollow circular reels (thick ring: outer r≈5, inner r≈2.5)
+          - Omega-shaped tape-path at the bottom connecting the two reels
+        """
+        W, H = 22, 14
+
+        # --- Outer rectangle (eckig, keine abgerundeten Ecken) ---
+        self.hline(x,     y,         W)          # top
+        self.hline(x,     y + H - 1, W)          # bottom
+        self.vline(x,         y, H)              # left
+        self.vline(x + W - 1, y, H)              # right
+
+        
+        def _circle(cx, cy, r):
+            px = 0
+            py = r
+            d = 3 - 2 * r
+            while px <= py:
+                for dx, dy in ((px, py), (py, px), (-px, py), (-py, px),
+                            (-px, -py), (-py, -px), (px, -py), (py, -px)):
+                    self.fill_rect(cx + dx, cy + dy, 1, 1, True)
+                if d < 0:
+                    d += 4 * px + 6
+                else:
+                    d += 4 * (px - py) + 10
+                    py -= 1
+                px += 1
+
+        r = 3
+        cy = y + 7
+        left_cx  = x + 6
+        right_cx = x + W - 7
+
+        # Linker und rechter Kreis, je nur eine Linie
+        _circle(left_cx,  cy, r)
+        _circle(right_cx, cy, r)
+
+        # --- Strich tangential zur Oberkante beider Kreise ---
+        top_y = cy - r  # Tangentenpunkt oben
+        self.hline(left_cx, top_y, right_cx - left_cx + 1)
+        y = y + 16
+        self.draw_text(x + 3, y + 2, "AUTO")
+        W, H = 22, 9
+        self.hline(x,     y,         W)          # top
+        self.hline(x,     y + H - 1, W)          # bottom
+        self.vline(x,         y, H)              # left
+        self.vline(x + W - 1, y, H)              # right
+
     def _scroll_title(self, title, tick):
         t = (title or "-").upper()
         vis_chars = 28
@@ -462,6 +514,10 @@ class SSD1309Display:
 
         state_txt = (state or "STOP")[:6]
         self.draw_text(8, 36, state_txt)
+
+        # Cassette icon right of time when a video is loaded
+        if (state or "").upper() not in ("", "STOP", "IDLE"):
+            self._draw_cassette(100, 5)
         
         
 
