@@ -417,6 +417,9 @@ def build_gpio_buttons(cfg):
 def dispatch_action(rpc, action):
     if action == "Player.PlayPause":
         rpc.play_pause()
+    elif action == "Player.Play":
+        # Compatibility: treat dedicated PLAY button as toggle on this remote.
+        rpc.play_pause()
     elif action in ("Player.Stop", "Input.Stop"):
         # Try direct player stop first, then global stop action as fallback.
         rpc.stop()
@@ -431,8 +434,60 @@ def dispatch_action(rpc, action):
         rpc.execute_action("fastforward")
     elif action == "Input.Rewind":
         rpc.execute_action("rewind")
+    elif action == "Input.Up":
+        rpc.execute_action("up")
+    elif action == "Input.Down":
+        rpc.execute_action("down")
+    elif action == "Input.Left":
+        rpc.execute_action("left")
+    elif action == "Input.Right":
+        rpc.execute_action("right")
+    elif action == "Input.Select":
+        rpc.execute_action("select")
+    elif action == "Input.Back":
+        rpc.execute_action("back")
+    elif action == "Player.ChapterNext":
+        rpc.execute_action("nextchapter")
+    elif action == "Player.ChapterPrevious":
+        rpc.execute_action("previouschapter")
     else:
         log(f"Unknown action mapping: {action}")
+
+
+def resolve_builtin_action(event_upper):
+    if event_upper == "STOP":
+        return "Player.Stop"
+    if event_upper == "PLAY":
+        return "Player.PlayPause"
+    if event_upper == "PLAY_PAUSE":
+        return "Player.PlayPause"
+    if event_upper == "FF":
+        return "Input.FastForward"
+    if event_upper == "RW":
+        return "Input.Rewind"
+    if event_upper == "NEXT":
+        return "Player.GoNext"
+    if event_upper == "PREV":
+        return "Player.GoPrevious"
+    if event_upper in ("GO_START", "GOSTART", "START"):
+        return "Player.GoStart"
+    if event_upper == "UP":
+        return "Input.Up"
+    if event_upper == "DOWN":
+        return "Input.Down"
+    if event_upper == "LEFT":
+        return "Input.Left"
+    if event_upper == "RIGHT":
+        return "Input.Right"
+    if event_upper == "OK":
+        return "Input.Select"
+    if event_upper == "BACK":
+        return "Input.Back"
+    if event_upper == "CHAPTER_NEXT":
+        return "Player.ChapterNext"
+    if event_upper == "CHAPTER_PREV":
+        return "Player.ChapterPrevious"
+    return None
 
 
 def run():
@@ -593,14 +648,7 @@ def run():
                 event_upper = str(event).upper()
                 action = button_map.get(event_upper)
                 if action is None:
-                    if event_upper == "STOP":
-                        action = "Player.Stop"
-                    elif event_upper == "PREV":
-                        action = "Player.GoPrevious"
-                    elif event_upper == "NEXT":
-                        action = "Player.GoNext"
-                    elif event_upper in ("GO_START", "GOSTART", "START"):
-                        action = "Player.GoStart"
+                    action = resolve_builtin_action(event_upper)
                 if action:
                     dispatch_action(rpc, action)
                     log(f"GPIO event {event_upper} -> {action}")
@@ -654,14 +702,7 @@ def run():
                     else:
                         action = button_map.get(event_str)
                         if action is None:
-                            if event_str == "STOP":
-                                action = "Player.Stop"
-                            elif event_str == "PREV":
-                                action = "Player.GoPrevious"
-                            elif event_str == "NEXT":
-                                action = "Player.GoNext"
-                            elif event_str in ("GO_START", "GOSTART", "START"):
-                                action = "Player.GoStart"
+                            action = resolve_builtin_action(event_str)
 
                         if action:
                             dispatch_action(rpc, action)

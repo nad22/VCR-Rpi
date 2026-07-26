@@ -30,7 +30,7 @@ class BluetoothRemoteReader:
         self._last_link_check_at = 0.0
         self._link_check_interval_sec = 2.0
         self._event_pattern = re.compile(
-            r"(PLAY_PAUSE|GO_START|STOP|NEXT|PREV|FF|RW|SEEK:[+-]?\d+(?:\.\d+)?)",
+            r"(PLAY_PAUSE|PLAY|GO_START|STOP|NEXT|PREV|FF|RW|UP|DOWN|LEFT|RIGHT|OK|BACK|CHAPTER_NEXT|CHAPTER_PREV|SEEK:[+-]?\d+(?:\.\d+)?)",
             re.IGNORECASE,
         )
         self._discover_device()

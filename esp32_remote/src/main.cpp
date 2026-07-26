@@ -28,17 +28,26 @@ struct ButtonState {
   bool sent_for_press;
 };
 
-ButtonState buttons[7] = {
-  {BTN_PLAY_PAUSE, "PLAY_PAUSE", HIGH, HIGH, 0, false},
+ButtonState buttons[] = {
+  {BTN_PLAY, "PLAY", HIGH, HIGH, 0, false},
   {BTN_STOP, "STOP", HIGH, HIGH, 0, false},
   {BTN_FF, "FF", HIGH, HIGH, 0, false},
   {BTN_RW, "RW", HIGH, HIGH, 0, false},
-  {BTN_NEXT, "NEXT", HIGH, HIGH, 0, false},
-  {BTN_PREV, "PREV", HIGH, HIGH, 0, false},
-  {BTN_GO_START, "GO_START", HIGH, HIGH, 0, false}
+  {BTN_UP, "UP", HIGH, HIGH, 0, false},
+  {BTN_DOWN, "DOWN", HIGH, HIGH, 0, false},
+  {BTN_LEFT, "LEFT", HIGH, HIGH, 0, false},
+  {BTN_RIGHT, "RIGHT", HIGH, HIGH, 0, false},
+  {BTN_OK, "OK", HIGH, HIGH, 0, false},
+  {BTN_BACK, "BACK", HIGH, HIGH, 0, false},
+  {BTN_SEEK_FWD_10, "SEEK:+10", HIGH, HIGH, 0, false},
+  {BTN_SEEK_BACK_10, "SEEK:-10", HIGH, HIGH, 0, false},
+  {BTN_CHAPTER_NEXT, "CHAPTER_NEXT", HIGH, HIGH, 0, false},
+  {BTN_CHAPTER_PREV, "CHAPTER_PREV", HIGH, HIGH, 0, false}
 };
 
 const uint8_t NUM_BUTTONS = sizeof(buttons) / sizeof(ButtonState);
+bool bt_initialized = false;
+unsigned long button_flash_until_ms = 0;
 
 // Forward declarations
 void IRAM_ATTR encoder_isr();
@@ -47,6 +56,43 @@ void send_command(const char* cmd);
 void setup_hardware();
 void drain_bt_rx();
 void log_serial(const char* msg);
+void set_status_led(bool red_on, bool green_on);
+void update_status_led();
+void trigger_button_feedback();
+
+void set_status_led(bool red_on, bool green_on) {
+  int red_level = red_on ? HIGH : LOW;
+  int green_level = green_on ? HIGH : LOW;
+  if (!LED_ACTIVE_HIGH) {
+    red_level = red_on ? LOW : HIGH;
+    green_level = green_on ? LOW : HIGH;
+  }
+  digitalWrite(LED_RED_PIN, red_level);
+  digitalWrite(LED_GRN_PIN, green_level);
+}
+
+void trigger_button_feedback() {
+  button_flash_until_ms = millis() + LED_BUTTON_FLASH_MS;
+}
+
+void update_status_led() {
+  unsigned long now = millis();
+  if (now < button_flash_until_ms) {
+    // Orange: both LED dies active.
+    set_status_led(true, true);
+    return;
+  }
+
+  bool connected = bt_initialized && SerialBT.hasClient();
+  if (connected) {
+    // Solid green when BT client is connected.
+    set_status_led(false, true);
+  } else {
+    // Blink red while unavailable/disconnected/connecting.
+    bool red_on = ((now / LED_BLINK_MS) % 2) == 0;
+    set_status_led(red_on, false);
+  }
+}
 
 /**
  * Interrupt handler for rotary encoder - full quadrature state machine.
@@ -82,6 +128,11 @@ void setup_hardware() {
   for (uint8_t i = 0; i < NUM_BUTTONS; i++) {
     pinMode(buttons[i].pin, INPUT_PULLUP);
   }
+
+  // Status LED pins
+  pinMode(LED_RED_PIN, OUTPUT);
+  pinMode(LED_GRN_PIN, OUTPUT);
+  set_status_led(false, false);
   
   // Full quadrature decoder: CHANGE on both pins for bidirectional detection.
   {
@@ -116,6 +167,7 @@ void handle_buttons() {
         // Active-low press: emit exactly once per full press-release cycle.
         if (!buttons[i].sent_for_press) {
           send_command(buttons[i].event);
+          trigger_button_feedback();
           buttons[i].sent_for_press = true;
         }
       } else {
@@ -159,7 +211,8 @@ void setup() {
   delay(100);
   
   // Initialize Bluetooth
-  if (!SerialBT.begin(BT_DEVICE_NAME)) {
+  bt_initialized = SerialBT.begin(BT_DEVICE_NAME);
+  if (!bt_initialized) {
     Serial.println("[ERR] Bluetooth init failed!");
   } else {
     Serial.print("[OK] Bluetooth device: ");
@@ -171,7 +224,9 @@ void setup() {
   
   Serial.println("[INIT] VCR Remote ready");
   Serial.println("[INFO] Encoder: CLK=" STR(ENCODER_CLK) " DT=" STR(ENCODER_DT));
-  Serial.println("[INFO] Buttons: 7 GPIO inputs configured");
+  Serial.print("[INFO] Buttons: ");
+  Serial.print(NUM_BUTTONS);
+  Serial.println(" GPIO inputs configured");
 }
 
 /**
@@ -183,6 +238,8 @@ void loop() {
   static int32_t logical_pos_prev = 0;
   static int last_raw_clk = HIGH;
   static int last_raw_dt = HIGH;
+
+  update_status_led();
 
   // Handle button presses
   handle_buttons();

@@ -14,13 +14,29 @@
 #define ENCODER_DIRECTION_INVERT 1  // set to 1 to swap + / - direction
 
 // Button pins
-#define BTN_PLAY_PAUSE  12
-#define BTN_STOP        13
-#define BTN_FF          14
-#define BTN_RW          15
-#define BTN_NEXT        16
-#define BTN_PREV        17
-#define BTN_GO_START    4
+#define BTN_PLAY          12
+#define BTN_STOP          13
+#define BTN_FF            14
+#define BTN_RW            15
+#define BTN_UP            16
+#define BTN_DOWN          17
+#define BTN_LEFT          19
+#define BTN_RIGHT         21
+#define BTN_OK            27
+#define BTN_BACK          25
+#define BTN_SEEK_FWD_10   26
+#define BTN_SEEK_BACK_10  5
+#define BTN_CHAPTER_NEXT  32
+#define BTN_CHAPTER_PREV  33
+
+// Dual-color LED (2-pin bi-color LED with shared long pin)
+// If your LED is wired common-cathode set LED_ACTIVE_HIGH to 1.
+// If your LED is wired common-anode set LED_ACTIVE_HIGH to 0.
+#define LED_RED_PIN  2
+#define LED_GRN_PIN  4
+#define LED_ACTIVE_HIGH 1
+#define LED_BLINK_MS 300
+#define LED_BUTTON_FLASH_MS 400
 
 // Timing constants
 #define DEBOUNCE_MS 50
