@@ -15,6 +15,7 @@ from lib.kodi_rpc import KodiRpc
 from lib.ssd1309_display import SSD1309Display
 from lib.ads1115_levels import ADS1115LevelReader
 from lib.bluetooth_remote import BluetoothRemoteReader
+from lib.servo_controller import ServoController
 
 
 ADDON = xbmcaddon.Addon()
@@ -121,14 +122,26 @@ class GpioButtonReader:
         if self._is_valid_global_gpio(pin, chips):
             return pin
 
-        for chip in chips:
-            label = chip["label"].lower()
-            if "bcm" in label or "raspberry" in label or "pinctrl" in label:
-                if 0 <= pin < chip["ngpio"]:
+        # Prefer the main SoC pin controller (pinctrl-bcm*) over auxiliary
+        # expander chips (e.g. raspberrypi-exp-gpio), which also match a loose
+        # "raspberry" substring check but only expose a handful of internal
+        # lines unrelated to the physical header pins.
+        def _match(predicate):
+            for chip in chips:
+                label = chip["label"].lower()
+                if predicate(label) and 0 <= pin < chip["ngpio"]:
                     candidate = chip["base"] + pin
                     if self._is_valid_global_gpio(candidate, chips):
-                        log(f"GPIO pin mapping: BCM {pin} -> sysfs {candidate} ({chip['label']})")
-                        return candidate
+                        return candidate, chip["label"]
+            return None, None
+
+        candidate, chip_label = _match(lambda label: "pinctrl" in label)
+        if candidate is None:
+            candidate, chip_label = _match(lambda label: "bcm" in label or "raspberry" in label)
+
+        if candidate is not None:
+            log(f"GPIO pin mapping: BCM {pin} -> sysfs {candidate} ({chip_label})")
+            return candidate
 
         return pin
 
@@ -414,7 +427,7 @@ def build_gpio_buttons(cfg):
     return buttons
 
 
-def dispatch_action(rpc, action):
+def dispatch_action(rpc, action, servo_controller=None):
     if action == "Player.PlayPause":
         rpc.play_pause()
     elif action == "Player.Play":
@@ -450,6 +463,16 @@ def dispatch_action(rpc, action):
         rpc.execute_action("nextchapter")
     elif action == "Player.ChapterPrevious":
         rpc.execute_action("previouschapter")
+    elif action == "Servo.Eject":
+        if servo_controller is not None:
+            servo_controller.trigger_eject()
+        else:
+            log("Servo.Eject requested but no servo controller is active")
+    elif action == "Servo.Load":
+        if servo_controller is not None:
+            servo_controller.trigger_load()
+        else:
+            log("Servo.Load requested but no servo controller is active")
     else:
         log(f"Unknown action mapping: {action}")
 
@@ -487,6 +510,10 @@ def resolve_builtin_action(event_upper):
         return "Player.ChapterNext"
     if event_upper == "CHAPTER_PREV":
         return "Player.ChapterPrevious"
+    if event_upper == "EJECT":
+        return "Servo.Eject"
+    if event_upper == "LOAD":
+        return "Servo.Load"
     return None
 
 
@@ -503,6 +530,8 @@ def run():
     next_cfg_reload = 0.0
     last_buttons_cfg_raw = ""
     last_display_cfg_raw = ""
+    last_servos_cfg_raw = ""
+    servo_controller = None
 
     last_state = ""
     last_timecode = ""
@@ -586,6 +615,21 @@ def run():
                         log(f"No GPIO backend available (requested backend={gpio_backend})")
                 last_buttons_cfg_raw = cfg_raw
 
+            servos_cfg = load_json("servos.json", {"enabled": False})
+            servos_cfg_raw = json.dumps(servos_cfg, sort_keys=True)
+            if servos_cfg_raw != last_servos_cfg_raw:
+                if servo_controller is not None:
+                    servo_controller.close()
+                    servo_controller = None
+                if bool(servos_cfg.get("enabled", False)):
+                    try:
+                        servo_controller = ServoController(servos_cfg, log_fn=log)
+                        log("Servo controller initialized")
+                    except Exception as exc:
+                        servo_controller = None
+                        log(f"Servo controller init failed: {exc}")
+                last_servos_cfg_raw = servos_cfg_raw
+
             display_cfg_raw = json.dumps(display_cfg, sort_keys=True)
             if display_cfg_raw != last_display_cfg_raw:
                 if display is not None:
@@ -650,7 +694,7 @@ def run():
                 if action is None:
                     action = resolve_builtin_action(event_upper)
                 if action:
-                    dispatch_action(rpc, action)
+                    dispatch_action(rpc, action, servo_controller=servo_controller)
                     log(f"GPIO event {event_upper} -> {action}")
                 else:
                     log(f"GPIO event {event_upper} has no action mapping")
@@ -705,7 +749,7 @@ def run():
                             action = resolve_builtin_action(event_str)
 
                         if action:
-                            dispatch_action(rpc, action)
+                            dispatch_action(rpc, action, servo_controller=servo_controller)
                             log(f"BT event {event_str} -> {action}")
                         else:
                             log(f"BT event {event_str} has no action mapping")
@@ -780,6 +824,8 @@ def run():
         ads_reader.close()
     if display is not None:
         display.close()
+    if servo_controller is not None:
+        servo_controller.close()
 
     log("Service stopped")
 

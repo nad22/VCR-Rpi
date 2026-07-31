@@ -1,0 +1,35 @@
+{
+  "enabled": true,
+  "pulse_min_us": 500,
+  "pulse_max_us": 2400,
+  "angle_min": 0,
+  "angle_max": 180,
+  "frequency_hz": 50,
+  "move_settle_sec": 0.3,
+  "release_after_move": true,
+  "pwm_chip": "pwmchip0",
+  "speed_deg_per_sec": null,
+  "servo1": {
+    "pin": 13,
+    "pwm_channel": 1,
+    "neutral_angle": 0,
+    "eject_angle": 0,
+    "load_angle": 360,
+    "speed_deg_per_sec": 60
+  },
+  "servo2": {
+    "pin": 12,
+    "pwm_channel": 0,
+    "closed_angle": 140,
+    "open_angle": 0,
+    "speed_deg_per_sec": 150
+  },
+  "eject": {
+    "servo1_hold_sec": 0.6,
+    "door_delay_sec": 2,
+    "door_open_hold_sec": 3.0
+  },
+  "load": {
+    "servo1_hold_sec": 0.6
+  }
+}

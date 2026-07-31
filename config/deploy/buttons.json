@@ -10,6 +10,8 @@
     { "name": "rw", "source": "gpio", "pin": 23, "event": "RW", "action": "Input.Rewind", "active_low": true, "pull": "up", "debounce_ms": 50 },
     { "name": "next", "source": "gpio", "pin": 24, "event": "NEXT", "action": "Player.GoNext", "active_low": true, "pull": "up", "debounce_ms": 50 },
     { "name": "prev", "source": "gpio", "pin": 25, "event": "PREV", "action": "Player.GoPrevious", "active_low": true, "pull": "up", "debounce_ms": 50 },
-    { "name": "go_start", "source": "gpio", "pin": 26, "event": "GO_START", "action": "Player.GoStart", "active_low": true, "pull": "up", "debounce_ms": 50 }
+    { "name": "go_start", "source": "gpio", "pin": 26, "event": "GO_START", "action": "Player.GoStart", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "eject", "source": "gpio", "pin": 5, "event": "EJECT", "action": "Servo.Eject", "active_low": true, "pull": "up", "debounce_ms": 80 },
+    { "name": "load", "source": "gpio", "pin": 6, "event": "LOAD", "action": "Servo.Load", "active_low": true, "pull": "up", "debounce_ms": 80 }
   ]
 }
