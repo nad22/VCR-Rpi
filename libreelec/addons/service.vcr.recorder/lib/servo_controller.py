@@ -417,35 +417,54 @@ class ServoController:
         # holds torque at the target end position.
 
     def _run_eject_sequence(self):
-        servo1_thread = None
         try:
+            seq_start = time.monotonic()
             self.log("Servo eject sequence started")
 
-            # Start servo1's eject move in parallel with the door: the
-            # cassette must not hit the still-closed door, so the door needs
-            # to be opening (or already open) by the time servo1 pushes the
-            # cassette out. eject_door_delay_sec controls how long after the
-            # eject sequence starts the door begins opening.
-            servo1_thread = threading.Thread(
-                target=self._move_and_hold,
-                args=(self._servo1, self.servo1_eject_angle, "_servo1_current_angle"),
-                daemon=True,
-            )
-            servo1_thread.start()
+            # Both timers below start counting from the moment the eject
+            # button is pressed (i.e. right now, in parallel with the door
+            # opening), not sequentially after each other:
+            #   - eject_door_delay_sec: when servo1 (eject) is triggered
+            #   - eject_door_open_hold_sec: when the door is moved back/closed
+            # The door-close move only ever runs after the door-open move
+            # has actually finished (same pin, can't overlap), so if the
+            # door timer expires before the door finished opening, closing
+            # starts immediately once opening completes.
 
-            if self.eject_door_delay_sec > 0:
-                time.sleep(self.eject_door_delay_sec)
+            def do_door():
+                t0 = time.monotonic()
+                self._move(self._servo2, self.servo2_open_angle, self.move_settle_sec, "_servo2_current_angle")
+                open_duration = time.monotonic() - t0
+                self.log(f"Servo eject: door open move took {open_duration:.2f}s")
 
-            self._move(self._servo2, self.servo2_open_angle, self.eject_door_open_hold_sec, "_servo2_current_angle")
-            self._move(self._servo2, self.servo2_closed_angle, self.move_settle_sec, "_servo2_current_angle")
+                remaining = self.eject_door_open_hold_sec - open_duration
+                if remaining > 0:
+                    time.sleep(remaining)
 
-            servo1_thread.join()
-            self.log("Servo eject sequence finished")
+                t0 = time.monotonic()
+                self._move(self._servo2, self.servo2_closed_angle, self.move_settle_sec, "_servo2_current_angle")
+                self.log(f"Servo eject: door close move took {time.monotonic() - t0:.2f}s")
+
+            def do_eject():
+                if self.eject_door_delay_sec > 0:
+                    time.sleep(self.eject_door_delay_sec)
+                t0 = time.monotonic()
+                self._move_and_hold(self._servo1, self.servo1_eject_angle, "_servo1_current_angle")
+                self.log(f"Servo eject: servo1 eject move took {time.monotonic() - t0:.2f}s")
+
+            door_thread = threading.Thread(target=do_door, daemon=True)
+            eject_thread = threading.Thread(target=do_eject, daemon=True)
+
+            door_thread.start()
+            eject_thread.start()
+
+            door_thread.join()
+            eject_thread.join()
+
+            self.log(f"Servo eject sequence finished (total {time.monotonic() - seq_start:.2f}s)")
         except Exception as exc:
             self.log(f"Servo eject sequence failed: {exc}")
         finally:
-            if servo1_thread is not None:
-                servo1_thread.join()
             with self._lock:
                 self._busy = False
 
