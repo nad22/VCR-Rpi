@@ -12,6 +12,12 @@
     { "name": "prev", "source": "gpio", "pin": 25, "event": "PREV", "action": "Player.GoPrevious", "active_low": true, "pull": "up", "debounce_ms": 50 },
     { "name": "go_start", "source": "gpio", "pin": 26, "event": "GO_START", "action": "Player.GoStart", "active_low": true, "pull": "up", "debounce_ms": 50 },
     { "name": "eject", "source": "gpio", "pin": 5, "event": "EJECT", "action": "Servo.Eject", "active_low": true, "pull": "up", "debounce_ms": 80 },
-    { "name": "load", "source": "gpio", "pin": 6, "event": "LOAD", "action": "Servo.Load", "active_low": true, "pull": "up", "debounce_ms": 80 }
+    { "name": "load", "source": "gpio", "pin": 6, "event": "LOAD", "action": "Servo.Load", "active_low": true, "pull": "up", "debounce_ms": 80 },
+    { "name": "reset", "source": "gpio", "pin": 16, "event": "RESET", "action": "System.RestartKodi", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "time_toggle", "source": "gpio", "pin": 20, "event": "TIME_TOGGLE", "action": "Display.ToggleTimeMode", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "reserve1", "source": "gpio", "pin": 4, "event": "RESERVE1", "action": "Reserved.Button1", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "reserve2", "source": "gpio", "pin": 7, "event": "RESERVE2", "action": "Reserved.Button2", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "reserve3", "source": "gpio", "pin": 8, "event": "RESERVE3", "action": "Reserved.Button3", "active_low": true, "pull": "up", "debounce_ms": 50 },
+    { "name": "reserve4", "source": "gpio", "pin": 9, "event": "RESERVE4", "action": "Reserved.Button4", "active_low": true, "pull": "up", "debounce_ms": 50 }
   ]
 }

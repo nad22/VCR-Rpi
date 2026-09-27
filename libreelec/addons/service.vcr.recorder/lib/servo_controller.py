@@ -322,6 +322,9 @@ class ServoController:
         ratio = (angle - self.angle_min) / span_angle
         return self.pulse_min_us + ratio * span_pulse
 
+    def _clamp_angle(self, angle):
+        return max(self.angle_min, min(self.angle_max, float(angle)))
+
     def _pulse_for(self, pin, angle, duration_sec):
         pulse_us = self._angle_to_pulse_us(angle)
         period_sec = 1.0 / self.frequency_hz
@@ -376,7 +379,8 @@ class ServoController:
             self.log(f"Servo move skipped: pin not initialized (angle={angle})")
             return
 
-        from_angle = getattr(self, track_attr, angle)
+        angle = self._clamp_angle(angle)
+        from_angle = self._clamp_angle(getattr(self, track_attr, angle))
         speed = self._speed_for(pin)
         speed_desc = f"{speed:g}deg/s" if speed else "max"
         self.log(
@@ -403,7 +407,8 @@ class ServoController:
             self.log(f"Servo move skipped: pin not initialized (angle={angle})")
             return
 
-        from_angle = getattr(self, track_attr, angle)
+        angle = self._clamp_angle(angle)
+        from_angle = self._clamp_angle(getattr(self, track_attr, angle))
         speed = self._speed_for(pin)
         speed_desc = f"{speed:g}deg/s" if speed else "max"
         self.log(
@@ -470,9 +475,10 @@ class ServoController:
 
     def _run_load_sequence(self):
         try:
+            seq_start = time.monotonic()
             self.log("Servo load sequence started")
             self._move_and_hold(self._servo1, self.servo1_load_angle, "_servo1_current_angle")
-            self.log("Servo load sequence finished")
+            self.log(f"Servo load sequence finished (total {time.monotonic() - seq_start:.2f}s)")
         except Exception as exc:
             self.log(f"Servo load sequence failed: {exc}")
         finally:

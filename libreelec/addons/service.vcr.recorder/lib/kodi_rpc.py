@@ -174,6 +174,10 @@ class KodiRpc:
     def execute_action(self, action):
         self._call("Input.ExecuteAction", {"action": action})
 
+    def restart_kodi(self):
+        # Restarts the Kodi binary without rebooting the whole device.
+        xbmc.executebuiltin("RestartApp")
+
     def open_target(self, target):
         self._call("Player.Open", {"item": {"file": target}})
 

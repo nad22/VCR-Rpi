@@ -20,5 +20,12 @@
     "baseline_alpha": 0.10
   },
   "invert": false,
-  "rotate180": false
+  "rotate180": false,
+  "bluetooth_remote": {
+    "enabled": true,
+    "device_name": "VCR_REMOTE",
+    "device_addr": "",
+    "rfcomm_channel": 1,
+    "reconnect_interval_sec": 15
+  }
 }

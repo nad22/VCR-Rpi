@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "bus": "auto",
+  "address": "0x68",
+  "sync_from_system_on_start": false
+}

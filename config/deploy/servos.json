@@ -9,13 +9,14 @@
   "release_after_move": true,
   "pwm_chip": "pwmchip0",
   "speed_deg_per_sec": null,
+  "eject_on_boot": true,
   "servo1": {
     "pin": 13,
     "pwm_channel": 1,
     "neutral_angle": 0,
-    "eject_angle": 78,
+    "eject_angle": 180,
     "load_angle": 0,
-    "speed_deg_per_sec": 100
+    "speed_deg_per_sec": 200
   },
   "servo2": {
     "pin": 12,
@@ -30,6 +31,6 @@
     "door_open_hold_sec": 0.5
   },
   "load": {
-    "servo1_hold_sec": 0.6
+    "servo1_hold_sec": 0.0
   }
 }

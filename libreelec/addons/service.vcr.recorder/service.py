@@ -16,6 +16,7 @@ from lib.ssd1309_display import SSD1309Display
 from lib.ads1115_levels import ADS1115LevelReader
 from lib.bluetooth_remote import BluetoothRemoteReader
 from lib.servo_controller import ServoController
+from lib.rtc_ds3231 import DS3231Rtc
 
 
 ADDON = xbmcaddon.Addon()
@@ -52,6 +53,15 @@ def _read_text(path, default=""):
 def _write_text(path, value):
     with open(path, "w", encoding="utf-8") as f:
         f.write(str(value))
+
+
+def _get_clock_timecode(rtc):
+    if rtc is not None:
+        try:
+            return rtc.read_time_str()
+        except Exception as exc:
+            log(f"RTC read failed, falling back to system clock: {exc}")
+    return time.strftime("%H:%M:%S")
 
 
 def _read_external_audio_levels(path, max_age_sec=0.7):
@@ -427,7 +437,7 @@ def build_gpio_buttons(cfg):
     return buttons
 
 
-def dispatch_action(rpc, action, servo_controller=None):
+def dispatch_action(rpc, action, servo_controller=None, display_state=None):
     if action == "Player.PlayPause":
         rpc.play_pause()
     elif action == "Player.Play":
@@ -473,6 +483,17 @@ def dispatch_action(rpc, action, servo_controller=None):
             servo_controller.trigger_load()
         else:
             log("Servo.Load requested but no servo controller is active")
+    elif action == "System.RestartKodi":
+        log("Restarting Kodi (RESET button)")
+        rpc.restart_kodi()
+    elif action == "Display.ToggleTimeMode":
+        if display_state is not None:
+            display_state["mode"] = "clock" if display_state.get("mode") != "clock" else "counter"
+            log(f"Display mode toggled -> {display_state['mode']}")
+        else:
+            log("Display.ToggleTimeMode requested but no display state is active")
+    elif action.startswith("Reserved."):
+        log(f"{action} pressed (reserve button, no action mapped yet)")
     else:
         log(f"Unknown action mapping: {action}")
 
@@ -514,6 +535,12 @@ def resolve_builtin_action(event_upper):
         return "Servo.Eject"
     if event_upper == "LOAD":
         return "Servo.Load"
+    if event_upper == "RESET":
+        return "System.RestartKodi"
+    if event_upper in ("TIME_TOGGLE", "TIME", "CLOCK"):
+        return "Display.ToggleTimeMode"
+    if event_upper in ("RESERVE1", "RESERVE2", "RESERVE3", "RESERVE4"):
+        return f"Reserved.Button{event_upper[-1]}"
     return None
 
 
@@ -524,6 +551,7 @@ def run():
     display = None
     ads_reader = None
     bt_reader = None
+    next_bt_reconnect_at = 0.0
 
     buttons_cfg = {"buttons": []}
     button_map = {}
@@ -532,6 +560,10 @@ def run():
     last_display_cfg_raw = ""
     last_servos_cfg_raw = ""
     servo_controller = None
+    boot_eject_pending = True
+    last_rtc_cfg_raw = ""
+    rtc = None
+    display_state = {"mode": "counter"}
 
     last_state = ""
     last_timecode = ""
@@ -625,10 +657,35 @@ def run():
                     try:
                         servo_controller = ServoController(servos_cfg, log_fn=log)
                         log("Servo controller initialized")
+                        if boot_eject_pending and bool(servos_cfg.get("eject_on_boot", True)):
+                            servo_controller.trigger_eject()
+                            log("Boot eject triggered to clear any inserted cassette")
                     except Exception as exc:
                         servo_controller = None
                         log(f"Servo controller init failed: {exc}")
+                boot_eject_pending = False
                 last_servos_cfg_raw = servos_cfg_raw
+
+            rtc_cfg = load_json(
+                "rtc.json",
+                {"enabled": False, "bus": "auto", "address": "0x68", "sync_from_system_on_start": False},
+            )
+            rtc_cfg_raw = json.dumps(rtc_cfg, sort_keys=True)
+            if rtc_cfg_raw != last_rtc_cfg_raw:
+                if rtc is not None:
+                    rtc.close()
+                    rtc = None
+                if bool(rtc_cfg.get("enabled", False)):
+                    try:
+                        rtc = DS3231Rtc(bus=rtc_cfg.get("bus", "auto"), address=rtc_cfg.get("address", "0x68"))
+                        log(f"DS3231 RTC initialized on {getattr(rtc, '_resolved_dev', 'unknown')}")
+                        if bool(rtc_cfg.get("sync_from_system_on_start", False)):
+                            rtc.sync_from_system()
+                            log("DS3231 RTC synced from system clock")
+                    except Exception as exc:
+                        rtc = None
+                        log(f"DS3231 RTC init failed: {exc}")
+                last_rtc_cfg_raw = rtc_cfg_raw
 
             display_cfg_raw = json.dumps(display_cfg, sort_keys=True)
             if display_cfg_raw != last_display_cfg_raw:
@@ -694,35 +751,38 @@ def run():
                 if action is None:
                     action = resolve_builtin_action(event_upper)
                 if action:
-                    dispatch_action(rpc, action, servo_controller=servo_controller)
+                    dispatch_action(rpc, action, servo_controller=servo_controller, display_state=display_state)
                     log(f"GPIO event {event_upper} -> {action}")
                 else:
                     log(f"GPIO event {event_upper} has no action mapping")
 
         if bt_reader is None:
-            try:
-                bt_cfg = display_cfg.get("bluetooth_remote", {}) if isinstance(display_cfg, dict) else {}
-                bt_name = str(bt_cfg.get("device_name", "VCR_REMOTE")).strip() or "VCR_REMOTE"
-                bt_addr = str(bt_cfg.get("device_addr", "")).strip() or os.environ.get("VCR_REMOTE_ADDR")
-                bt_channels = bt_cfg.get("rfcomm_channels")
-                if bt_channels is None:
-                    bt_channels = [int(bt_cfg.get("rfcomm_channel", 1))]
-                bt_reader = BluetoothRemoteReader(
-                    device_name=bt_name,
-                    device_addr=bt_addr,
-                    rfcomm_channels=bt_channels,
-                )
-                if bt_reader.connect():
-                    log(
-                        "Bluetooth remote connected "
-                        f"name={bt_name} addr={bt_reader.device_addr} "
-                        f"channel={bt_reader.connected_channel}"
+            bt_cfg = display_cfg.get("bluetooth_remote", {}) if isinstance(display_cfg, dict) else {}
+            if bool(bt_cfg.get("enabled", False)) and now >= next_bt_reconnect_at:
+                reconnect_interval = max(1.0, float(bt_cfg.get("reconnect_interval_sec", 15)))
+                next_bt_reconnect_at = now + reconnect_interval
+                try:
+                    bt_name = str(bt_cfg.get("device_name", "VCR_REMOTE")).strip() or "VCR_REMOTE"
+                    bt_addr = str(bt_cfg.get("device_addr", "")).strip() or os.environ.get("VCR_REMOTE_ADDR")
+                    bt_channels = bt_cfg.get("rfcomm_channels")
+                    if bt_channels is None:
+                        bt_channels = [int(bt_cfg.get("rfcomm_channel", 1))]
+                    bt_reader = BluetoothRemoteReader(
+                        device_name=bt_name,
+                        device_addr=bt_addr,
+                        rfcomm_channels=bt_channels,
                     )
-                else:
+                    if bt_reader.connect():
+                        log(
+                            "Bluetooth remote connected "
+                            f"name={bt_name} addr={bt_reader.device_addr} "
+                            f"channel={bt_reader.connected_channel}"
+                        )
+                    else:
+                        bt_reader = None
+                except Exception as exc:
+                    log(f"Bluetooth remote init failed: {exc}")
                     bt_reader = None
-            except Exception as exc:
-                log(f"Bluetooth remote init failed: {exc}")
-                bt_reader = None
 
         if bt_reader is not None:
             try:
@@ -749,7 +809,7 @@ def run():
                             action = resolve_builtin_action(event_str)
 
                         if action:
-                            dispatch_action(rpc, action, servo_controller=servo_controller)
+                            dispatch_action(rpc, action, servo_controller=servo_controller, display_state=display_state)
                             log(f"BT event {event_str} -> {action}")
                         else:
                             log(f"BT event {event_str} has no action mapping")
@@ -761,6 +821,9 @@ def run():
                     except Exception:
                         pass
                     bt_reader = None
+                bt_cfg = display_cfg.get("bluetooth_remote", {}) if isinstance(display_cfg, dict) else {}
+                reconnect_interval = max(1.0, float(bt_cfg.get("reconnect_interval_sec", 15)))
+                next_bt_reconnect_at = now + reconnect_interval
 
         snapshot = rpc.get_playback_snapshot()
         if now >= next_volume_poll:
@@ -796,9 +859,14 @@ def run():
 
         if display is not None:
             try:
+                if display_state.get("mode") == "clock":
+                    display_timecode = _get_clock_timecode(rtc)
+                else:
+                    display_timecode = snapshot["timecode"]
+
                 display.render_vfd(
                     state=snapshot["state"],
-                    timecode=snapshot["timecode"],
+                    timecode=display_timecode,
                     title=snapshot["title"],
                     volume=last_volume,
                     level_l=last_audio_left,
@@ -826,6 +894,8 @@ def run():
         display.close()
     if servo_controller is not None:
         servo_controller.close()
+    if rtc is not None:
+        rtc.close()
 
     log("Service stopped")
 
