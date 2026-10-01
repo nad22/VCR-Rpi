@@ -146,31 +146,31 @@ Poweroff wieder aufloest.
 ```text
 					Q1 P-MOSFET (High-Side)
 Netzteil +5V o----------S
-					 |\
-					 | \ D------o------ Pi +5V (Pin 2 oder 4)
-					 |  /
-					 | /
-					 |/
-					 G
-					 o Knoten G
-					 |
-		   R1 10k      +-------- C Q2 NPN
+						 |\
+						 | \ D------o------ Pi +5V (Pin 2 oder 4)
+						 |  /
+						 | /
+						 |/
+						 G
+						 o Knoten G
+						 |
+			   R1 10k      +-------- C Q2 NPN
 Netzteil +5V o---/\/\/----+           |
-							   E
-							   |
-							  GND
+								   E
+								   |
+								  GND
 
 GPIO19 (Pin 35) o---R2 1k---B Q2
-						|
-					R3 10k
-						|
-					    GND
+								|
+							R3 10k
+								|
+							   GND
 
 Knoten G o---|<|---o Knoten B
 		   D1     |
 	  Anode an G   +--- SW1 Power-Taster --- GND
 	  Kathode an B |
-				 +--- R4 10k --- GPIO21 (Pin 40)
+					 +--- R4 10k --- GPIO21 (Pin 40)
 
 Pi GND, Netzteil GND und Schaltungs-GND gemeinsam verbinden.
 ```
@@ -284,8 +284,8 @@ Leitungsquerschnitt und die gemeinsame Masse pruefen.
 
 Hinweise:
 - `gpio=19=op,dh` setzt GPIO19 bereits durch die Firmware sofort auf HIGH, bevor der Kernel ueberhaupt startet - das
-  verhindert einen kurzen Spannungseinbruch/Reset waehrend der fruehen Bootphase, bevor der Kernel das
-  `gpio-poweroff` Overlay uebernimmt.
+	verhindert einen kurzen Spannungseinbruch/Reset waehrend der fruehen Bootphase, bevor der Kernel das
+	`gpio-poweroff` Overlay uebernimmt.
 - Optional debounce=100 (ms) an die gpio-shutdown Zeile anhaengen, falls der Taster prellt.
 - Kurzer Tastendruck im laufenden Betrieb = sauberes Shutdown + automatisches Abschalten der Stromversorgung.
 - Kurzer Tastendruck im ausgeschalteten Zustand = Einschalten.

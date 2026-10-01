@@ -46,7 +46,7 @@ Raspberry Pi 4 (BCM Pin-Nummern):
 ## Layout Controller Pins (interne Doku für meinen Aufbau)
 ---------GPIO-------------
 ADC IN      Servo_LID      Buttons-Groß
-res         Servo_LOAD     SW-LOAD, Buttons-Klein
+            Servo_LOAD     SW-LOAD, Buttons-Klein
 Pwr IN      OLED           Buttons-Rechts, Eject
 
 

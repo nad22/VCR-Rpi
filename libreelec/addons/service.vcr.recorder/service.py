@@ -474,6 +474,7 @@ def dispatch_action(rpc, action, servo_controller=None, display_state=None):
     elif action == "Player.ChapterPrevious":
         rpc.execute_action("previouschapter")
     elif action == "Servo.Eject":
+        rpc.execute_action("stop")
         if servo_controller is not None:
             servo_controller.trigger_eject()
         else:

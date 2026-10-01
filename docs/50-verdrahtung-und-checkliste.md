@@ -51,7 +51,6 @@ Jeder Taster hat 2 Pins:
 | Next | GPIO24 |
 | Previous | GPIO25 |
 | Go Start | GPIO26 |
-| Power (Shutdown) | GPIO21 |
 | Power (Shutdown-Signal) | GPIO21 |
 | Power (Latch-Hold-Ausgang) | GPIO19 |
 
