@@ -15,20 +15,20 @@
     "pwm_channel": 1,
     "neutral_angle": 0,
     "eject_angle": 180,
-    "load_angle": 0,
-    "speed_deg_per_sec": 200
+    "load_angle": 20,
+    "speed_deg_per_sec": 150
   },
   "servo2": {
     "pin": 12,
     "pwm_channel": 0,
-    "closed_angle": 140,
+    "closed_angle": 160 ,
     "open_angle": 0,
-    "speed_deg_per_sec": 150
+    "speed_deg_per_sec": 400
   },
   "eject": {
-    "servo1_hold_sec": 0.6,
+    "servo1_hold_sec": 2,
     "door_delay_sec": 0.5,
-    "door_open_hold_sec": 0.5
+    "door_open_hold_sec": 1.5
   },
   "load": {
     "servo1_hold_sec": 0.0

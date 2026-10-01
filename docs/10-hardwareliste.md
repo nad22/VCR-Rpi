@@ -15,6 +15,12 @@
 2. Gehaeuse mit Frontpanel
 3. Kleiner Lautsprecher/Buzzer fuer Feedback
 4. Echtzeituhr-Modul (RTC) falls noetig
+5. Power-Taster fuer echtes Ein-/Ausschalten (P-MOSFET + NPN-Transistor Latch-Schaltung, siehe 30-installation-librelec.md Abschnitt 7):
+   - 1x P-Kanal MOSFET, Logic-Level (z.B. AO3401, IRLML6401)
+   - 1x NPN-Kleinsignaltransistor (z.B. BC547, 2N3904)
+   - 1x Kleinsignaldiode (1N4148)
+   - Widerstaende: 3x 10k, 1x 1k
+   - 1x Taster
 
 ## Verdrahtung (direkt am Pi)
 
@@ -35,3 +41,12 @@ Raspberry Pi 4 (BCM Pin-Nummern):
    - Prev: GPIO25
    - GoStart: GPIO26
 3. PN532 USB v2 direkt an Raspberry Pi USB Port
+
+
+## Layout Controller Pins (interne Doku für meinen Aufbau)
+---------GPIO-------------
+ADC IN      Servo_LID      Buttons-Groß
+res         Servo_LOAD     SW-LOAD, Buttons-Klein
+Pwr IN      OLED           Buttons-Rechts, Eject
+
+

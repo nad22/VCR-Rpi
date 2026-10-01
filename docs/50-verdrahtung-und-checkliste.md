@@ -51,12 +51,20 @@ Jeder Taster hat 2 Pins:
 | Next | GPIO24 |
 | Previous | GPIO25 |
 | Go Start | GPIO26 |
+| Power (Shutdown) | GPIO21 |
+| Power (Shutdown-Signal) | GPIO21 |
+| Power (Latch-Hold-Ausgang) | GPIO19 |
 
 Empfohlene Action-Zuordnung in buttons.json:
 - Stop -> Player.Stop
 - Previous -> Player.GoPrevious
 - Next -> Player.GoNext
 - Go Start -> Player.GoStart
+
+Hinweis Power-Taster: GPIO19 und GPIO21 NICHT in buttons.json eintragen. Diese Pins werden exklusiv von den
+Kernel-Overlays gpio-poweroff/gpio-shutdown verwaltet (siehe docs/30-installation-librelec.md Abschnitt 7). Der
+Taster selbst haengt nicht direkt an GND, sondern an der P-MOSFET/NPN-Latch-Schaltung (siehe dort fuer die komplette
+Verdrahtung inkl. Bauteile).
 
 ## Erstinbetriebnahme-Checkliste
 

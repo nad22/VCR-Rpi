@@ -119,3 +119,173 @@ Autostart via systemd (empfohlen):
 1. PN532 USB v2 am Raspberry Pi einstecken
 2. Die komplette RFID-/Medienlogik wird von Zaparoo ausserhalb dieses Repos verarbeitet
 3. Keine RFID-Zuordnungsskripte im Addon noetig
+
+## 7) Echtes Ein-/Ausschalten per Taster (Power-Latch-Schaltung)
+
+Das Kodi-Addon ist dafuer nicht zustaendig, das laeuft komplett auf Firmware-/Kernel-Ebene. Ein GPIO-Pin allein kann
+den Pi nicht wieder einschalten (waehrend er aus ist, laeuft kein Code) - dafuer wird ein P-MOSFET als Hauptschalter
+mit einer kleinen Transistor-Latch-Schaltung verbaut. Der gleiche Taster startet den Pi (schliesst den MOSFET direkt)
+und meldet spaeter per GPIO einen Shutdown-Wunsch, waehrend die Firmware/der Kernel den Latch offen haelt bzw. beim
+Poweroff wieder aufloest.
+
+### Bauteile
+
+- Q1: P-Kanal MOSFET, Logic-Level (z.B. AO3401, IRLML6401), High-Side-Schalter zwischen Netzteil und Pi-5V-Eingang
+- Q2: NPN-Kleinsignaltransistor (z.B. BC547, 2N3904)
+- D1: Kleinsignaldiode (1N4148)
+- R1: 10k (Source/Netzteil-Plus nach Gate, Pull-up)
+- R2: 1k (GPIO19 nach Q2-Basis)
+- R3: 10k (Q2-Basis nach GND, Bleeder)
+- R4: 10k (Tasternode nach GPIO21, Schutzwiderstand)
+- SW1: Taster (1x, 2 Pins)
+
+### Verschaltung
+
+### Uebersichtsschaltplan
+
+```text
+					Q1 P-MOSFET (High-Side)
+Netzteil +5V o----------S
+					 |\
+					 | \ D------o------ Pi +5V (Pin 2 oder 4)
+					 |  /
+					 | /
+					 |/
+					 G
+					 o Knoten G
+					 |
+		   R1 10k      +-------- C Q2 NPN
+Netzteil +5V o---/\/\/----+           |
+							   E
+							   |
+							  GND
+
+GPIO19 (Pin 35) o---R2 1k---B Q2
+						|
+					R3 10k
+						|
+					    GND
+
+Knoten G o---|<|---o Knoten B
+		   D1     |
+	  Anode an G   +--- SW1 Power-Taster --- GND
+	  Kathode an B |
+				 +--- R4 10k --- GPIO21 (Pin 40)
+
+Pi GND, Netzteil GND und Schaltungs-GND gemeinsam verbinden.
+```
+
+### Grafischer Schaltplan
+
+```mermaid
+flowchart LR
+	VCC[Netzteil +5V]
+	GND[Gemeinsame Masse GND]
+	PI[Raspberry Pi 4<br/>5V Pin 2 oder 4]
+	Q1[Q1 P-MOSFET<br/>Source -> Drain]
+	GATE[Knoten G<br/>Q1 Gate]
+	R1[R1 10k]
+	Q2[Q2 NPN<br/>Collector -> Emitter]
+	R2[R2 1k]
+	R3[R3 10k]
+	GPIO19[GPIO19<br/>Pin 35<br/>gpio-poweroff]
+	D1[D1 1N4148<br/>Anode: G<br/>Kathode: B]
+	BUTTON[SW1 Power-Taster]
+	NODEB[Knoten B]
+	R4[R4 10k]
+	GPIO21[GPIO21<br/>Pin 40<br/>gpio-shutdown]
+
+	VCC -->|Source| Q1
+	Q1 -->|Drain| PI
+	VCC --> R1
+	R1 --> GATE
+	GATE -->|Collector| Q2
+	Q2 -->|Emitter| GND
+	GPIO19 --> R2
+	R2 -->|Basis| Q2
+	R3 -->|Basis-Pulldown| Q2
+	R3 --> GND
+	GATE -->|Anode| D1
+	D1 -->|Kathode| NODEB
+	NODEB --> BUTTON
+	BUTTON --> GND
+	NODEB --> R4
+	R4 --> GPIO21
+	GND --- PI
+
+	classDef power fill:#ffe2a8,stroke:#a66a00,color:#111
+	classDef control fill:#d8ecff,stroke:#2369a1,color:#111
+	classDef component fill:#e5f4df,stroke:#39752c,color:#111
+	class VCC,PI,GND power
+	class GPIO19,GPIO21,BUTTON control
+	class Q1,Q2,R1,R2,R3,R4,D1,GATE,NODEB component
+```
+
+Im Diagramm zeigt der Pfeil an D1 die Anschlussreihenfolge **Knoten G -> Anode D1 -> Kathode D1 -> Knoten B**.
+
+**D1-Orientierung:** Anode an Knoten G (MOSFET-Gate), Kathode an Knoten B (Taster/GPIO21).
+Q1 ist ein P-Kanal-MOSFET; Source liegt am Netzteil-Plus, Drain am Pi-5V-Eingang. Niemals 5V direkt
+an einen GPIO-Pin anschliessen. Vor dem ersten Einschalten Q1-Pinbelegung aus dem Datenblatt pruefen,
+da sie je nach MOSFET-Gehaeuse unterschiedlich ist.
+
+1. Q1 Source -> ankommendes 5V vom Netzteil
+2. Q1 Drain -> Pi 5V-Eingang (Pin 2 oder 4), Netzteil-Plus wird NICHT mehr direkt an den Pi angeschlossen
+3. Q1 Gate -> Knoten G:
+	- ueber R1 (10k) an Netzteil-Plus (haelt Q1 im Ruhezustand gesperrt)
+	- ueber D1 (Anode an G, Kathode an Knoten B) an den Taster-Knoten B
+	- an Q2 Collector (Q2 Emitter an GND)
+4. Taster SW1: ein Bein an GND, anderes Bein = Knoten B
+	- Knoten B ueber D1 an Gate-Knoten G (siehe oben)
+	- Knoten B ueber R4 (10k) an GPIO21 (Pin 40)
+5. Q2 Basis ueber R2 (1k) an GPIO19 (Pin 35), zusaetzlich R3 (10k) Basis nach GND
+6. Gemeinsames GND zwischen Netzteil, Pi und allen Bauteilen
+
+Funktionsprinzip:
+- Pi aus, Taster gedrueckt: Knoten B liegt auf GND, zieht ueber D1 das Gate (G) herunter -> Q1 leitet -> Pi bekommt Strom -> Pi bootet.
+- Sehr frueh im Bootvorgang (noch vor dem Kernel) setzt die Firmware GPIO19 direkt auf HIGH -> Q2 schaltet durch -> haelt G dauerhaft auf GND, unabhaengig vom Taster (Latch). Der Taster kann losgelassen werden, der Pi bleibt an.
+- D1 verhindert, dass der von Q2 gehaltene GND-Pegel an G auf Knoten B (und damit auf GPIO21) durchschlaegt: solange der Taster nicht gedrueckt ist, haelt der interne Pull-up von GPIO21 Knoten B auf ca. 3.3V (Ruhezustand = HIGH, wie bei den anderen Tastern im Projekt).
+- Laufender Betrieb, Taster gedrueckt: GPIO21 geht auf LOW -> `gpio-shutdown` Overlay loest sauberes Shutdown aus.
+- Am Ende des Shutdowns setzt das `gpio-poweroff` Overlay GPIO19 auf LOW -> Q2 sperrt -> G wird wieder von R1 auf Netzteil-Plus gezogen -> Q1 sperrt -> Pi wird stromlos.
+
+### Konfiguration
+
+1. Taster gemaess Schaltung verbauen (GPIO19 als Ausgang, GPIO21 als Eingang - beide NICHT in buttons.json eintragen, die Overlays beanspruchen die Pins exklusiv).
+2. Per SSH auf den Pi einloggen und /flash beschreibbar machen: mount -o remount,rw /flash
+3. In /flash/config.txt folgende Zeilen ergaenzen:
+	- gpio=19=op,dh
+	- dtoverlay=gpio-poweroff,gpiopin=19,active_low=1
+	- dtoverlay=gpio-shutdown,gpio_pin=21,active_low=1,gpio_pull=up
+4. /flash wieder read-only: mount -o remount,ro /flash
+5. reboot (einmalig noch per Direktanschluss/altem Weg, damit die neuen Overlays geladen werden)
+
+### Vergleich mit aresta/Rasp_latch_button
+
+Die Referenzschaltung verwendet dieselben Kernel-Overlays, aber andere GPIOs:
+
+| Funktion | Referenzprojekt | Diese Schaltung |
+| --- | --- | --- |
+| Shutdown-Taster | GPIO2 | GPIO21 |
+| Poweroff/Latch-Hold | GPIO3 | GPIO19 |
+
+Die GPIO-Zuordnung unserer Schaltung ist damit funktional korrekt. GPIO2/GPIO3 werden hier nicht verwendet,
+weil GPIO2 und GPIO3 fuer den I2C-Bus des SSD1309 und ADS1115 benoetigt werden. Die GPIO-Nummern bestimmen
+nicht die 5V-Leistung oder die Spannung am Raspberry Pi; ein Spannungseinbruch beim Loslassen muss deshalb
+im MOSFET-/Netzteil-/Kabelpfad oder beim fehlenden Latch-Hold gesucht werden.
+
+Zum isolierten Testen muss bei eingeschaltetem Pi gelten:
+
+- GPIO19: HIGH (ca. 3,3 V), Q2 leitend, Q1-Gate nahe 0 V
+- GPIO21: HIGH im Ruhezustand, LOW beim Tastendruck
+- Pi-5V hinter Q1: stabil ca. 5,0 V, keinesfalls dauerhaft unter 4,75 V
+
+Bleibt GPIO19 beim Loslassen LOW oder ist der Pi-5V-Pegel bereits bei gedruecktem Taster zu niedrig,
+ist die Ursache nicht die GPIO-Auswahl. Dann Q2-Basisbeschaltung, Q2-Pinout, Q1-RDS(on), Netzteil,
+Leitungsquerschnitt und die gemeinsame Masse pruefen.
+
+Hinweise:
+- `gpio=19=op,dh` setzt GPIO19 bereits durch die Firmware sofort auf HIGH, bevor der Kernel ueberhaupt startet - das
+  verhindert einen kurzen Spannungseinbruch/Reset waehrend der fruehen Bootphase, bevor der Kernel das
+  `gpio-poweroff` Overlay uebernimmt.
+- Optional debounce=100 (ms) an die gpio-shutdown Zeile anhaengen, falls der Taster prellt.
+- Kurzer Tastendruck im laufenden Betrieb = sauberes Shutdown + automatisches Abschalten der Stromversorgung.
+- Kurzer Tastendruck im ausgeschalteten Zustand = Einschalten.
