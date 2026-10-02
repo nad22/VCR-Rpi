@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "device": "plughw:CARD=sndrpihifiberry,DEV=0",
+  "events": {
+    "load": "load.wav",
+    "eject": "eject.wav",
+    "stop": "stop.wav",
+    "play": "play.wav"
+  }
+}

@@ -16,6 +16,7 @@ from lib.ssd1309_display import SSD1309Display
 from lib.ads1115_levels import ADS1115LevelReader
 from lib.bluetooth_remote import BluetoothRemoteReader
 from lib.servo_controller import ServoController
+from lib.sound_effects import SoundEffectPlayer
 from lib.rtc_ds3231 import DS3231Rtc
 
 
@@ -484,13 +485,15 @@ def build_gpio_buttons(cfg):
     return buttons
 
 
-def dispatch_action(rpc, action, servo_controller=None, display_state=None):
-    if action == "Player.PlayPause":
-        rpc.play_pause()
-    elif action == "Player.Play":
-        # Compatibility: treat dedicated PLAY button as toggle on this remote.
+def dispatch_action(rpc, action, servo_controller=None, display_state=None, sound_player=None):
+    if action in ("Player.PlayPause", "Player.Play"):
+        # Play sound only when resuming from pause; PLAY on an idle player does nothing.
+        if sound_player is not None and rpc.get_player_state_text() == "PAUSE":
+            sound_player.play("play")
         rpc.play_pause()
     elif action in ("Player.Stop", "Input.Stop"):
+        if sound_player is not None and rpc.get_player_state_text() != "STOP":
+            sound_player.play("stop")
         # Try direct player stop first, then global stop action as fallback.
         rpc.stop()
         rpc.execute_action("stop")
@@ -522,11 +525,15 @@ def dispatch_action(rpc, action, servo_controller=None, display_state=None):
         rpc.execute_action("previouschapter")
     elif action == "Servo.Eject":
         rpc.execute_action("stop")
+        if sound_player is not None:
+            sound_player.play("eject")
         if servo_controller is not None:
             servo_controller.trigger_eject()
         else:
             log("Servo.Eject requested but no servo controller is active")
     elif action == "Servo.Load":
+        if sound_player is not None:
+            sound_player.play("load")
         if servo_controller is not None:
             servo_controller.trigger_load()
         else:
@@ -612,6 +619,8 @@ def run():
     last_buttons_cfg_raw = ""
     last_display_cfg_raw = ""
     last_servos_cfg_raw = ""
+    last_sounds_cfg_raw = ""
+    sound_player = None
     servo_controller = None
     boot_eject_pending = True
     last_rtc_cfg_raw = ""
@@ -739,6 +748,22 @@ def run():
                 boot_eject_pending = False
                 last_servos_cfg_raw = servos_cfg_raw
 
+            sounds_cfg = load_json("sounds.json", {"enabled": False})
+            sounds_cfg_raw = json.dumps(sounds_cfg, sort_keys=True)
+            if sounds_cfg_raw != last_sounds_cfg_raw:
+                if sound_player is not None:
+                    sound_player.close()
+                    sound_player = None
+                if bool(sounds_cfg.get("enabled", False)):
+                    try:
+                        sound_player = SoundEffectPlayer(
+                            sounds_cfg, os.path.join(DATA_DIR, "sounds"), log_fn=log
+                        )
+                    except Exception as exc:
+                        sound_player = None
+                        log(f"Sound effects init failed: {exc}")
+                last_sounds_cfg_raw = sounds_cfg_raw
+
             rtc_cfg = load_json(
                 "rtc.json",
                 {"enabled": False, "bus": "auto", "address": "0x68", "sync_from_system_on_start": False},
@@ -824,7 +849,13 @@ def run():
                 if action is None:
                     action = resolve_builtin_action(event_upper)
                 if action:
-                    dispatch_action(rpc, action, servo_controller=servo_controller, display_state=display_state)
+                    dispatch_action(
+                        rpc,
+                        action,
+                        servo_controller=servo_controller,
+                        display_state=display_state,
+                        sound_player=sound_player,
+                    )
                     log(f"GPIO event {event_upper} -> {action}")
                 else:
                     log(f"GPIO event {event_upper} has no action mapping")
@@ -882,7 +913,13 @@ def run():
                             action = resolve_builtin_action(event_str)
 
                         if action:
-                            dispatch_action(rpc, action, servo_controller=servo_controller, display_state=display_state)
+                            dispatch_action(
+                                rpc,
+                                action,
+                                servo_controller=servo_controller,
+                                display_state=display_state,
+                                sound_player=sound_player,
+                            )
                             log(f"BT event {event_str} -> {action}")
                         else:
                             log(f"BT event {event_str} has no action mapping")
@@ -988,6 +1025,8 @@ def run():
         display.close()
     if servo_controller is not None:
         servo_controller.close()
+    if sound_player is not None:
+        sound_player.close()
     if rtc is not None:
         rtc.close()
 

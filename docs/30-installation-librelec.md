@@ -134,9 +134,9 @@ Poweroff wieder aufloest.
 - Q2: NPN-Kleinsignaltransistor (z.B. BC547, 2N3904)
 - D1: Kleinsignaldiode (1N4148)
 - R1: 10k (Source/Netzteil-Plus nach Gate, Pull-up)
-- R2: 1k (GPIO19 nach Q2-Basis)
+- R2: 1k (GPIO10 nach Q2-Basis)
 - R3: 10k (Q2-Basis nach GND, Bleeder)
-- R4: 10k (Tasternode nach GPIO21, Schutzwiderstand)
+- R4: 10k (Tasternode nach GPIO11, Schutzwiderstand)
 - SW1: Taster (1x, 2 Pins)
 
 ### Verschaltung
@@ -160,7 +160,7 @@ Netzteil +5V o---/\/\/----+           |
 								   |
 								  GND
 
-GPIO19 (Pin 35) o---R2 1k---B Q2
+GPIO10 (Pin 19) o---R2 1k---B Q2
 								|
 							R3 10k
 								|
@@ -170,7 +170,7 @@ Knoten G o---|<|---o Knoten B
 		   D1     |
 	  Anode an G   +--- SW1 Power-Taster --- GND
 	  Kathode an B |
-					 +--- R4 10k --- GPIO21 (Pin 40)
+					 +--- R4 10k --- GPIO11 (Pin 23)
 
 Pi GND, Netzteil GND und Schaltungs-GND gemeinsam verbinden.
 ```
@@ -188,12 +188,12 @@ flowchart LR
 	Q2[Q2 NPN<br/>Collector -> Emitter]
 	R2[R2 1k]
 	R3[R3 10k]
-	GPIO19[GPIO19<br/>Pin 35<br/>gpio-poweroff]
+	GPIO10[GPIO10<br/>Pin 19<br/>gpio-poweroff]
 	D1[D1 1N4148<br/>Anode: G<br/>Kathode: B]
 	BUTTON[SW1 Power-Taster]
 	NODEB[Knoten B]
 	R4[R4 10k]
-	GPIO21[GPIO21<br/>Pin 40<br/>gpio-shutdown]
+	GPIO11[GPIO11<br/>Pin 23<br/>gpio-shutdown]
 
 	VCC -->|Source| Q1
 	Q1 -->|Drain| PI
@@ -201,7 +201,7 @@ flowchart LR
 	R1 --> GATE
 	GATE -->|Collector| Q2
 	Q2 -->|Emitter| GND
-	GPIO19 --> R2
+	GPIO10 --> R2
 	R2 -->|Basis| Q2
 	R3 -->|Basis-Pulldown| Q2
 	R3 --> GND
@@ -210,20 +210,20 @@ flowchart LR
 	NODEB --> BUTTON
 	BUTTON --> GND
 	NODEB --> R4
-	R4 --> GPIO21
+	R4 --> GPIO11
 	GND --- PI
 
 	classDef power fill:#ffe2a8,stroke:#a66a00,color:#111
 	classDef control fill:#d8ecff,stroke:#2369a1,color:#111
 	classDef component fill:#e5f4df,stroke:#39752c,color:#111
 	class VCC,PI,GND power
-	class GPIO19,GPIO21,BUTTON control
+	class GPIO10,GPIO11,BUTTON control
 	class Q1,Q2,R1,R2,R3,R4,D1,GATE,NODEB component
 ```
 
 Im Diagramm zeigt der Pfeil an D1 die Anschlussreihenfolge **Knoten G -> Anode D1 -> Kathode D1 -> Knoten B**.
 
-**D1-Orientierung:** Anode an Knoten G (MOSFET-Gate), Kathode an Knoten B (Taster/GPIO21).
+**D1-Orientierung:** Anode an Knoten G (MOSFET-Gate), Kathode an Knoten B (Taster/GPIO11).
 Q1 ist ein P-Kanal-MOSFET; Source liegt am Netzteil-Plus, Drain am Pi-5V-Eingang. Niemals 5V direkt
 an einen GPIO-Pin anschliessen. Vor dem ersten Einschalten Q1-Pinbelegung aus dem Datenblatt pruefen,
 da sie je nach MOSFET-Gehaeuse unterschiedlich ist.
@@ -236,25 +236,25 @@ da sie je nach MOSFET-Gehaeuse unterschiedlich ist.
 	- an Q2 Collector (Q2 Emitter an GND)
 4. Taster SW1: ein Bein an GND, anderes Bein = Knoten B
 	- Knoten B ueber D1 an Gate-Knoten G (siehe oben)
-	- Knoten B ueber R4 (10k) an GPIO21 (Pin 40)
-5. Q2 Basis ueber R2 (1k) an GPIO19 (Pin 35), zusaetzlich R3 (10k) Basis nach GND
+	- Knoten B ueber R4 (10k) an GPIO11 (Pin 23)
+5. Q2 Basis ueber R2 (1k) an GPIO10 (Pin 19), zusaetzlich R3 (10k) Basis nach GND
 6. Gemeinsames GND zwischen Netzteil, Pi und allen Bauteilen
 
 Funktionsprinzip:
 - Pi aus, Taster gedrueckt: Knoten B liegt auf GND, zieht ueber D1 das Gate (G) herunter -> Q1 leitet -> Pi bekommt Strom -> Pi bootet.
-- Sehr frueh im Bootvorgang (noch vor dem Kernel) setzt die Firmware GPIO19 direkt auf HIGH -> Q2 schaltet durch -> haelt G dauerhaft auf GND, unabhaengig vom Taster (Latch). Der Taster kann losgelassen werden, der Pi bleibt an.
-- D1 verhindert, dass der von Q2 gehaltene GND-Pegel an G auf Knoten B (und damit auf GPIO21) durchschlaegt: solange der Taster nicht gedrueckt ist, haelt der interne Pull-up von GPIO21 Knoten B auf ca. 3.3V (Ruhezustand = HIGH, wie bei den anderen Tastern im Projekt).
-- Laufender Betrieb, Taster gedrueckt: GPIO21 geht auf LOW -> `gpio-shutdown` Overlay loest sauberes Shutdown aus.
-- Am Ende des Shutdowns setzt das `gpio-poweroff` Overlay GPIO19 auf LOW -> Q2 sperrt -> G wird wieder von R1 auf Netzteil-Plus gezogen -> Q1 sperrt -> Pi wird stromlos.
+- Sehr frueh im Bootvorgang (noch vor dem Kernel) setzt die Firmware GPIO10 direkt auf HIGH -> Q2 schaltet durch -> haelt G dauerhaft auf GND, unabhaengig vom Taster (Latch). Der Taster kann losgelassen werden, der Pi bleibt an.
+- D1 verhindert, dass der von Q2 gehaltene GND-Pegel an G auf Knoten B (und damit auf GPIO11) durchschlaegt: solange der Taster nicht gedrueckt ist, haelt der interne Pull-up von GPIO11 Knoten B auf ca. 3.3V (Ruhezustand = HIGH, wie bei den anderen Tastern im Projekt).
+- Laufender Betrieb, Taster gedrueckt: GPIO11 geht auf LOW -> `gpio-shutdown` Overlay loest sauberes Shutdown aus.
+- Am Ende des Shutdowns setzt das `gpio-poweroff` Overlay GPIO10 auf LOW -> Q2 sperrt -> G wird wieder von R1 auf Netzteil-Plus gezogen -> Q1 sperrt -> Pi wird stromlos.
 
 ### Konfiguration
 
-1. Taster gemaess Schaltung verbauen (GPIO19 als Ausgang, GPIO21 als Eingang - beide NICHT in buttons.json eintragen, die Overlays beanspruchen die Pins exklusiv).
+1. Taster gemaess Schaltung verbauen (GPIO10 als Ausgang, GPIO11 als Eingang - beide NICHT in buttons.json eintragen, die Overlays beanspruchen die Pins exklusiv; GPIO19/GPIO21 bleiben fuer den I2S-Verstaerker aus Abschnitt 8 frei).
 2. Per SSH auf den Pi einloggen und /flash beschreibbar machen: mount -o remount,rw /flash
 3. In /flash/config.txt folgende Zeilen ergaenzen:
-	- gpio=19=op,dh
-	- dtoverlay=gpio-poweroff,gpiopin=19,active_low=1
-	- dtoverlay=gpio-shutdown,gpio_pin=21,active_low=1,gpio_pull=up
+	- gpio=10=op,dh
+	- dtoverlay=gpio-poweroff,gpiopin=10,active_low=1
+	- dtoverlay=gpio-shutdown,gpio_pin=11,active_low=1,gpio_pull=up
 4. /flash wieder read-only: mount -o remount,ro /flash
 5. reboot (einmalig noch per Direktanschluss/altem Weg, damit die neuen Overlays geladen werden)
 
@@ -264,8 +264,8 @@ Die Referenzschaltung verwendet dieselben Kernel-Overlays, aber andere GPIOs:
 
 | Funktion | Referenzprojekt | Diese Schaltung |
 | --- | --- | --- |
-| Shutdown-Taster | GPIO2 | GPIO21 |
-| Poweroff/Latch-Hold | GPIO3 | GPIO19 |
+| Shutdown-Taster | GPIO2 | GPIO11 |
+| Poweroff/Latch-Hold | GPIO3 | GPIO10 |
 
 Die GPIO-Zuordnung unserer Schaltung ist damit funktional korrekt. GPIO2/GPIO3 werden hier nicht verwendet,
 weil GPIO2 und GPIO3 fuer den I2C-Bus des SSD1309 und ADS1115 benoetigt werden. Die GPIO-Nummern bestimmen
@@ -274,18 +274,54 @@ im MOSFET-/Netzteil-/Kabelpfad oder beim fehlenden Latch-Hold gesucht werden.
 
 Zum isolierten Testen muss bei eingeschaltetem Pi gelten:
 
-- GPIO19: HIGH (ca. 3,3 V), Q2 leitend, Q1-Gate nahe 0 V
-- GPIO21: HIGH im Ruhezustand, LOW beim Tastendruck
+- GPIO10: HIGH (ca. 3,3 V), Q2 leitend, Q1-Gate nahe 0 V
+- GPIO11: HIGH im Ruhezustand, LOW beim Tastendruck
 - Pi-5V hinter Q1: stabil ca. 5,0 V, keinesfalls dauerhaft unter 4,75 V
 
-Bleibt GPIO19 beim Loslassen LOW oder ist der Pi-5V-Pegel bereits bei gedruecktem Taster zu niedrig,
+Bleibt GPIO10 beim Loslassen LOW oder ist der Pi-5V-Pegel bereits bei gedruecktem Taster zu niedrig,
 ist die Ursache nicht die GPIO-Auswahl. Dann Q2-Basisbeschaltung, Q2-Pinout, Q1-RDS(on), Netzteil,
 Leitungsquerschnitt und die gemeinsame Masse pruefen.
 
 Hinweise:
-- `gpio=19=op,dh` setzt GPIO19 bereits durch die Firmware sofort auf HIGH, bevor der Kernel ueberhaupt startet - das
+- `gpio=10=op,dh` setzt GPIO10 bereits durch die Firmware sofort auf HIGH, bevor der Kernel ueberhaupt startet - das
 	verhindert einen kurzen Spannungseinbruch/Reset waehrend der fruehen Bootphase, bevor der Kernel das
 	`gpio-poweroff` Overlay uebernimmt.
 - Optional debounce=100 (ms) an die gpio-shutdown Zeile anhaengen, falls der Taster prellt.
 - Kurzer Tastendruck im laufenden Betrieb = sauberes Shutdown + automatisches Abschalten der Stromversorgung.
 - Kurzer Tastendruck im ausgeschalteten Zustand = Einschalten.
+
+## 8) Sound-Effekte ueber MAX98357A (I2S)
+
+Der MAX98357A ist ein I2S-Verstaerker (kein I2C). Die Effekte laufen als eigener `aplay`-Prozess im Hintergrund
+auf der I2S-Soundkarte, nicht ueber den Kodi-Player; Kodi-Wiedergabe (HDMI) bleibt unberuehrt.
+
+### Verdrahtung
+
+| MAX98357A | Raspberry Pi |
+| --- | --- |
+| VIN | 5V (Pin 2 oder 4) |
+| GND | GND |
+| BCLK | GPIO18 (Pin 12) |
+| LRC | GPIO19 (Pin 35) |
+| DIN | GPIO21 (Pin 40) |
+| SD, GAIN | offen lassen (Standard) |
+
+**Pin-Belegung:** GPIO19 und GPIO21 sind fuer I2S fest vorgegeben. Der Power-Latch aus Abschnitt 7 liegt deshalb
+auf GPIO10 und GPIO11 und kollidiert nicht mit dem Verstaerker.
+
+### Einrichtung
+
+1. In /flash/config.txt ergaenzen (Vorgehen laut Adafruit-Anleitung zum MAX98357A), danach reboot:
+	- dtoverlay=hifiberry-dac
+	- dtoverlay=i2s-mmap
+2. Kartenname pruefen: `aplay -l` (erwartet z.B. sndrpihifiberry) und ggf. `device` in sounds.json anpassen.
+3. config/deploy/sounds.json nach /storage/.kodi/userdata/addon_data/service.vcr.recorder/ kopieren.
+4. WAV-Dateien nach /storage/.kodi/userdata/addon_data/service.vcr.recorder/sounds/ legen:
+	- load.wav, eject.wav, stop.wav, play.wav (Dateinamen in sounds.json aenderbar)
+5. Direkttest: `aplay -D plughw:CARD=sndrpihifiberry,DEV=0 /pfad/zur/datei.wav`
+
+Ausloeser:
+- LOAD und EJECT: bei jedem Tastendruck.
+- STOP: nur wenn gerade etwas laeuft oder pausiert ist.
+- PLAY: nur beim Fortsetzen aus der Pause (PLAY ohne aktiven Player tut nichts).
+- Ein neuer Effekt ersetzt einen noch laufenden.
