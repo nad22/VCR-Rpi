@@ -72,6 +72,7 @@ class ADS1115LevelReader:
             3: float(self.bias),
         }
         self._baseline_initialized = {0: False, 1: False, 2: False, 3: False}
+        self._last_window_stats = {}
 
         self.fd = None
         self._resolved_dev = None
@@ -177,9 +178,12 @@ class ADS1115LevelReader:
         if not samples:
             return 0
 
-        mean = sum(samples) / float(len(samples))
-        vmin = float(min(samples))
-        vmax = float(max(samples))
+        ordered = sorted(float(sample) for sample in samples)
+        # Ignore one extreme conversion at either edge to reject isolated I2C/ADC spikes.
+        stable_samples = ordered[1:-1] if len(ordered) >= 5 else ordered
+        mean = sum(stable_samples) / float(len(stable_samples))
+        vmin = stable_samples[0]
+        vmax = stable_samples[-1]
 
         # AC estimate from local peak-to-peak window.
         delta_ac = 0.5 * (vmax - vmin)
@@ -208,7 +212,24 @@ class ADS1115LevelReader:
         delta = max(0.0, delta - float(self.noise_floor))
 
         pct = int((delta / float(self.full_scale_delta)) * 100.0)
-        return max(0, min(100, pct))
+        pct = max(0, min(100, pct))
+        self._last_window_stats[channel] = {
+            "raw_min": int(min(samples)),
+            "raw_max": int(max(samples)),
+            "trimmed_mean": round(mean, 1),
+            "baseline": round(baseline, 1),
+            "ac_delta": round(delta_ac, 1),
+            "dc_delta": round(delta_dc, 1),
+            "level_delta": round(delta, 1),
+            "percent": pct,
+        }
+        return pct
+
+    def get_debug_snapshot(self):
+        return {
+            channel: dict(stats)
+            for channel, stats in self._last_window_stats.items()
+        }
 
     def _legacy_to_percent(self, samples):
         # Kept as fallback helper for troubleshooting.

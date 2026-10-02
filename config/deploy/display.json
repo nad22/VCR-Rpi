@@ -14,9 +14,9 @@
     "gain": "4.096",
     "sps": 860,
     "bias": 16384,
-    "full_scale_delta": 6,
-    "noise_floor": 1,
-    "samples_per_read": 2,
+    "full_scale_delta": 150,
+    "noise_floor": 80,
+    "samples_per_read": 8,
     "baseline_alpha": 0.10
   },
   "invert": false,
