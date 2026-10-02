@@ -72,7 +72,6 @@ class ADS1115LevelReader:
             3: float(self.bias),
         }
         self._baseline_initialized = {0: False, 1: False, 2: False, 3: False}
-        self._last_window_stats = {}
 
         self.fd = None
         self._resolved_dev = None
@@ -212,24 +211,7 @@ class ADS1115LevelReader:
         delta = max(0.0, delta - float(self.noise_floor))
 
         pct = int((delta / float(self.full_scale_delta)) * 100.0)
-        pct = max(0, min(100, pct))
-        self._last_window_stats[channel] = {
-            "raw_min": int(min(samples)),
-            "raw_max": int(max(samples)),
-            "trimmed_mean": round(mean, 1),
-            "baseline": round(baseline, 1),
-            "ac_delta": round(delta_ac, 1),
-            "dc_delta": round(delta_dc, 1),
-            "level_delta": round(delta, 1),
-            "percent": pct,
-        }
-        return pct
-
-    def get_debug_snapshot(self):
-        return {
-            channel: dict(stats)
-            for channel, stats in self._last_window_stats.items()
-        }
+        return max(0, min(100, pct))
 
     def _legacy_to_percent(self, samples):
         # Kept as fallback helper for troubleshooting.

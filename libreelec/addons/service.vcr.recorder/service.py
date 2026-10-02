@@ -628,7 +628,6 @@ def run():
 
     vu_poll_interval = 0.01
     next_volume_poll = 0.0
-    next_ads_diagnostic = 0.0
     tick = 0
     display_cfg = {}
     last_idle_screen_mode = False
@@ -905,14 +904,6 @@ def run():
                 levels = None
                 if audio_source == "ads1115" and ads_reader is not None:
                     levels = ads_reader.read_levels()
-                    if now >= next_ads_diagnostic:
-                        log(
-                            "ADS1115 diagnostics: "
-                            f"settings=scale:{ads_reader.full_scale_delta},noise:{ads_reader.noise_floor},"
-                            f"samples:{ads_reader.samples_per_read}; "
-                            f"windows={ads_reader.get_debug_snapshot()}"
-                        )
-                        next_ads_diagnostic = now + 5.0
                 elif audio_source in ("auto", "external"):
                     levels = _read_external_audio_levels(audio_levels_file)
 
