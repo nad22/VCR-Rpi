@@ -485,14 +485,36 @@ class SSD1309Display:
             return peak, hold_counter - 1
         return max(0.0, peak - decay), 0
 
-    def render_vfd(self, state, timecode, title, volume, tick, level_l=None, level_r=None):
+    def render_vfd(
+        self,
+        state,
+        timecode,
+        title,
+        volume,
+        tick,
+        level_l=None,
+        level_r=None,
+        status_text=None,
+        show_cassette=True,
+        weekday_index=None,
+        clock_layout=False,
+    ):
         self.clear()
 
         # Layered bezel lines to get a denser VFD front-panel look.
-        self.rect(0, 0, self.WIDTH, self.HEIGHT)
-        self.rect(1, 1, self.WIDTH - 2, self.HEIGHT - 2)
+        #self.rect(0, 0, self.WIDTH, self.HEIGHT)
+        #self.rect(1, 1, self.WIDTH - 2, self.HEIGHT - 2)
         self.hline(2, 33, self.WIDTH - 4)
         self.hline(2, 42, self.WIDTH - 4)
+
+        if weekday_index is not None:
+            weekdays = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+            current_day_index = (int(weekday_index) + 1) % len(weekdays)
+            cell_width = self.WIDTH / len(weekdays)
+            text_width = len(weekdays[0]) * 4 - 1
+            cell_center = int(round((current_day_index + 0.5) * cell_width))
+            text_x = cell_center - text_width // 2
+            self.draw_text(text_x, 1, weekdays[current_day_index])
 
         #title_line = self._scroll_title(title, tick)
         #self.draw_text(3, 3, title_line)
@@ -500,23 +522,30 @@ class SSD1309Display:
         tc = (timecode or "00:00:00")
         if len(tc) != 8:
             tc = "00:00:00"
-        digits = [tc[0], tc[1], tc[3], tc[4], tc[6], tc[7]]
-        x = 8
         y = 7
-        for i, d in enumerate(digits):
-            self.draw_digit7(x, y, d)
-            x += 13
-            if i in (1, 3):
-                self.draw_colon(x + 1, y)
-                x += 5
+        if clock_layout:
+            self.draw_digit7(39, y, tc[0])
+            self.draw_digit7(52, y, tc[1])
+            self.draw_colon(66, y)
+            self.draw_digit7(70, y, tc[3])
+            self.draw_digit7(83, y, tc[4])
+        else:
+            digits = [tc[0], tc[1], tc[3], tc[4], tc[6], tc[7]]
+            x = 8
+            for i, d in enumerate(digits):
+                self.draw_digit7(x, y, d)
+                x += 13
+                if i in (1, 3):
+                    self.draw_colon(x + 1, y)
+                    x += 5
 
         #self._draw_transport(6, 44, state)
 
-        state_txt = (state or "STOP")[:6]
+        state_txt = status_text if status_text is not None else (state or "STOP")[:6]
         self.draw_text(8, 36, state_txt)
 
         # Cassette icon right of time when a video is loaded
-        if (state or "").upper() not in ("", "STOP", "IDLE"):
+        if show_cassette and (state or "").upper() not in ("", "STOP", "IDLE"):
             self._draw_cassette(100, 5)
         
         
@@ -566,6 +595,12 @@ class SSD1309Display:
             if i == r_peak:
                 self.fill_rect(xx2, y_r + 3, bw, 1, True)
 
+        self.flush()
+
+    def render_poweroff_screen(self):
+        self.clear()
+        self.draw_text(44, 22, "POWER OFF")
+        self.draw_text(38, 34, "PLEASE WAIT")
         self.flush()
 
     def flush(self):

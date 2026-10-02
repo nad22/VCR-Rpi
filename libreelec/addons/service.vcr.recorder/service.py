@@ -23,6 +23,12 @@ ADDON = xbmcaddon.Addon()
 ADDON_ID = ADDON.getAddonInfo("id")
 DATA_DIR = xbmcvfs.translatePath(f"special://profile/addon_data/{ADDON_ID}")
 RAM_AUDIO_LEVELS_FILE = f"/dev/shm/{ADDON_ID}/audio_levels.json"
+IDLE_STATE_FILE = xbmcvfs.translatePath(
+    "special://profile/addon_data/service.idlescreen/idle_playback"
+)
+IDLE_TOGGLE_REQUEST = xbmcvfs.translatePath(
+    "special://profile/addon_data/service.idlescreen/toggle_idle"
+)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
@@ -62,6 +68,15 @@ def _get_clock_timecode(rtc):
         except Exception as exc:
             log(f"RTC read failed, falling back to system clock: {exc}")
     return time.strftime("%H:%M:%S")
+
+
+def _is_idle_screen_playback():
+    try:
+        if time.time() - os.path.getmtime(IDLE_STATE_FILE) <= 8:
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def _read_external_audio_levels(path, max_age_sec=0.7):
@@ -298,7 +313,10 @@ class GpioButtonReader:
 
             if pressed != st["pressed"]:
                 st["pressed"] = pressed
-                log(f"GPIO edge pin={pin} pressed={pressed}")
+                log(
+                    f"GPIO edge name={btn.get('name', '?')} bcm={btn.get('pin', '?')} "
+                    f"sysfs={pin} event={btn.get('event', '?')} pressed={pressed} raw={value}"
+                )
                 if pressed:
                     debounce_ms = int(btn.get("debounce_ms", 50))
                     if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
@@ -403,6 +421,10 @@ class GpiodCliButtonReader:
 
             if pressed != st["pressed"]:
                 st["pressed"] = pressed
+                log(
+                    f"gpiod edge name={btn.get('name', '?')} bcm={pin} "
+                    f"event={btn.get('event', '?')} pressed={pressed} level={level}"
+                )
                 if pressed:
                     debounce_ms = int(btn.get("debounce_ms", 50))
                     if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
@@ -424,6 +446,31 @@ def build_button_mapping(cfg):
         pairs = ", ".join(f"{k}->{v}" for k, v in sorted(mapping.items()))
         log(f"GPIO button mapping loaded: {pairs}")
     return mapping
+
+
+def ensure_idle_toggle_button(cfg):
+    buttons = cfg.setdefault("buttons", [])
+    if any(
+        button.get("source") == "gpio"
+        and str(button.get("event", "")).upper() == "RESET"
+        for button in buttons
+    ):
+        return False
+
+    buttons.append(
+        {
+            "name": "reset",
+            "source": "gpio",
+            "pin": 16,
+            "event": "RESET",
+            "action": "IdleScreen.Toggle",
+            "active_low": True,
+            "pull": "up",
+            "debounce_ms": 50,
+        }
+    )
+    log("RESET GPIO absent from buttons.json; added fallback BCM16 -> IdleScreen.Toggle")
+    return True
 
 
 def build_gpio_buttons(cfg):
@@ -484,9 +531,14 @@ def dispatch_action(rpc, action, servo_controller=None, display_state=None):
             servo_controller.trigger_load()
         else:
             log("Servo.Load requested but no servo controller is active")
-    elif action == "System.RestartKodi":
-        log("Restarting Kodi (RESET button)")
-        rpc.restart_kodi()
+    elif action in ("System.RestartKodi", "IdleScreen.Toggle", "IdleScreen.Activate"):
+        try:
+            os.makedirs(os.path.dirname(IDLE_TOGGLE_REQUEST), exist_ok=True)
+            with open(IDLE_TOGGLE_REQUEST, "w", encoding="utf-8") as request_file:
+                request_file.write(str(time.time()))
+            log(f"IdleScreen toggle requested by action={action}")
+        except Exception as exc:
+            log(f"IdleScreen toggle request failed: {exc}")
     elif action == "Display.ToggleTimeMode":
         if display_state is not None:
             display_state["mode"] = "clock" if display_state.get("mode") != "clock" else "counter"
@@ -537,7 +589,7 @@ def resolve_builtin_action(event_upper):
     if event_upper == "LOAD":
         return "Servo.Load"
     if event_upper == "RESET":
-        return "System.RestartKodi"
+        return "IdleScreen.Toggle"
     if event_upper in ("TIME_TOGGLE", "TIME", "CLOCK"):
         return "Display.ToggleTimeMode"
     if event_upper in ("RESERVE1", "RESERVE2", "RESERVE3", "RESERVE4"):
@@ -578,6 +630,7 @@ def run():
     next_volume_poll = 0.0
     tick = 0
     display_cfg = {}
+    last_idle_screen_mode = False
 
     log("Service started")
 
@@ -586,6 +639,7 @@ def run():
 
         if now >= next_cfg_reload:
             buttons_cfg = load_json("buttons.json", {"buttons": []})
+            ensure_idle_toggle_button(buttons_cfg)
             button_map = build_button_mapping(buttons_cfg)
 
             display_cfg = load_json(
@@ -629,6 +683,19 @@ def run():
                 gpio_cfg = buttons_cfg.get("gpio", {})
                 gpio_backend = str(gpio_cfg.get("backend", "auto")).lower()
                 gpio_chip = str(gpio_cfg.get("chip", "gpiochip0"))
+                reset_button = next(
+                    (button for button in buttons_cfg.get("buttons", []) if str(button.get("event", "")).upper() == "RESET"),
+                    None,
+                )
+                if reset_button is None:
+                    log("RESET button missing from active buttons.json")
+                else:
+                    log(
+                        "RESET button config active: "
+                        f"name={reset_button.get('name')} pin={reset_button.get('pin')} "
+                        f"source={reset_button.get('source')} action={reset_button.get('action')} "
+                        f"backend={gpio_backend} chip={gpio_chip}"
+                    )
 
                 if gpio_reader is not None:
                     gpio_reader.close()
@@ -646,6 +713,11 @@ def run():
 
                     if gpio_reader is None:
                         log(f"No GPIO backend available (requested backend={gpio_backend})")
+                    else:
+                        log(
+                            f"GPIO reader active: {type(gpio_reader).__name__}; "
+                            f"RESET event configured={any(str(btn.get('event', '')).upper() == 'RESET' for btn in gpio_buttons)}"
+                        )
                 last_buttons_cfg_raw = cfg_raw
 
             servos_cfg = load_json("servos.json", {"enabled": False})
@@ -858,9 +930,19 @@ def run():
             last_state = state
             last_timecode = timecode
 
+        idle_screen_mode = _is_idle_screen_playback()
+        if idle_screen_mode != last_idle_screen_mode:
+            log(
+                "IdleScreen OLED mode "
+                f"{'active' if idle_screen_mode else 'inactive'}: "
+                f"title={snapshot.get('title', '-')}, file={snapshot.get('file', '')}"
+            )
+            last_idle_screen_mode = idle_screen_mode
+
         if display is not None:
             try:
-                if display_state.get("mode") == "clock":
+                show_clock = idle_screen_mode or display_state.get("mode") == "clock"
+                if show_clock:
                     display_timecode = _get_clock_timecode(rtc)
                 else:
                     display_timecode = snapshot["timecode"]
@@ -873,6 +955,10 @@ def run():
                     level_l=last_audio_left,
                     level_r=last_audio_right,
                     tick=tick,
+                    status_text="TV - ORF 1" if idle_screen_mode else None,
+                    show_cassette=not idle_screen_mode,
+                    weekday_index=time.localtime().tm_wday if show_clock else None,
+                    clock_layout=show_clock,
                 )
             except Exception as exc:
                 log(f"SSD1309 render failed: {exc}")
@@ -886,6 +972,13 @@ def run():
 
         if monitor.waitForAbort(vu_poll_interval):
             break
+
+    if display is not None and monitor.abortRequested():
+        try:
+            display.render_poweroff_screen()
+            log("Power-off screen displayed on OLED")
+        except Exception as exc:
+            log(f"SSD1309 power-off screen failed: {exc}")
 
     if gpio_reader is not None:
         gpio_reader.close()

@@ -188,6 +188,7 @@ class KodiRpc:
                 "state": "STOP",
                 "timecode": "00:00:00",
                 "title": "-",
+                "file": "",
             }
 
         properties = self._call(
@@ -202,7 +203,7 @@ class KodiRpc:
             "Player.GetItem",
             {
                 "playerid": player_id,
-                "properties": ["title", "showtitle", "label"],
+                "properties": ["title", "showtitle", "label", "file"],
             },
         ).get("result", {}).get("item", {})
 
@@ -226,6 +227,7 @@ class KodiRpc:
             "state": state,
             "timecode": timecode,
             "title": title,
+            "file": item.get("file", ""),
         }
 
     def get_audio_level(self):

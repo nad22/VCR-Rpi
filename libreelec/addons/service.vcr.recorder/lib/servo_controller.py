@@ -256,6 +256,7 @@ class ServoController:
         self.servo1_load_angle = float(servo1_cfg.get("load_angle", 150))
         self.servo1_pwm_channel = servo1_cfg.get("pwm_channel")
         self.servo1_speed_deg_per_sec = self._resolve_speed(servo1_cfg)
+        self.servo1_smooth_ramp = bool(servo1_cfg.get("smooth_ramp", False))
         self._servo1_current_angle = self.servo1_neutral_angle
 
         self.servo2_pin = int(servo2_cfg.get("pin", 13))
@@ -263,9 +264,18 @@ class ServoController:
         self.servo2_open_angle = float(servo2_cfg.get("open_angle", 90))
         self.servo2_pwm_channel = servo2_cfg.get("pwm_channel")
         self.servo2_speed_deg_per_sec = self._resolve_speed(servo2_cfg)
+        self.servo2_smooth_ramp = bool(servo2_cfg.get("smooth_ramp", False))
         self._servo2_current_angle = self.servo2_closed_angle
 
         self.eject_servo1_hold_sec = max(0.0, float(eject_cfg.get("servo1_hold_sec", 0.6)))
+        self.eject_servo1_speed_deg_per_sec = (
+            self._resolve_speed(eject_cfg)
+            if "speed_deg_per_sec" in eject_cfg
+            else self.servo1_speed_deg_per_sec
+        )
+        self.eject_servo1_smooth_ramp = bool(
+            eject_cfg.get("smooth_ramp", self.servo1_smooth_ramp)
+        )
         self.eject_door_delay_sec = max(
             0.0,
             float(eject_cfg.get("door_delay_sec", eject_cfg.get("servo1_to_servo2_delay_sec", 0.4))),
@@ -273,6 +283,14 @@ class ServoController:
         self.eject_door_open_hold_sec = max(0.0, float(eject_cfg.get("door_open_hold_sec", 3.0)))
 
         self.load_servo1_hold_sec = max(0.0, float(load_cfg.get("servo1_hold_sec", 0.6)))
+        self.load_servo1_speed_deg_per_sec = (
+            self._resolve_speed(load_cfg)
+            if "speed_deg_per_sec" in load_cfg
+            else self.servo1_speed_deg_per_sec
+        )
+        self.load_servo1_smooth_ramp = bool(
+            load_cfg.get("smooth_ramp", self.servo1_smooth_ramp)
+        )
 
         self._servo1 = self._setup_pin(self.servo1_pin, "servo1", self.servo1_pwm_channel)
         self._servo2 = self._setup_pin(self.servo2_pin, "servo2", self.servo2_pwm_channel)
@@ -290,6 +308,13 @@ class ServoController:
         if pin is self._servo2:
             return self.servo2_speed_deg_per_sec
         return self.default_speed_deg_per_sec
+
+    def _smooth_ramp_for(self, pin):
+        if pin is self._servo1:
+            return self.servo1_smooth_ramp
+        if pin is self._servo2:
+            return self.servo2_smooth_ramp
+        return False
 
     def _setup_pin(self, bcm_pin, label, pwm_channel=None):
         if pwm_channel is not None:
@@ -352,7 +377,7 @@ class ServoController:
         else:
             self._pulse_for(pin, angle, duration_sec)
 
-    def _ramp_to_angle(self, pin, from_angle, to_angle, speed_deg_per_sec):
+    def _ramp_to_angle(self, pin, from_angle, to_angle, speed_deg_per_sec, smooth=False):
         """Move from from_angle to to_angle, returning the time spent moving.
 
         If speed_deg_per_sec is None/<=0 (default), jump directly to the
@@ -366,7 +391,10 @@ class ServoController:
             step_dt = 0.02
             steps = max(1, int(round(duration / step_dt)))
             for i in range(1, steps + 1):
-                step_angle = from_angle + (to_angle - from_angle) * (i / steps)
+                progress = i / steps
+                if smooth:
+                    progress = progress * progress * (3.0 - 2.0 * progress)
+                step_angle = from_angle + (to_angle - from_angle) * progress
                 self._drive_angle(pin, step_angle, step_dt)
             self._drive_angle(pin, to_angle, self.move_settle_sec)
             return steps * step_dt + self.move_settle_sec
@@ -388,7 +416,9 @@ class ServoController:
             f"hold={hold_sec:.2f}s speed={speed_desc}"
         )
 
-        move_duration = self._ramp_to_angle(pin, from_angle, angle, speed)
+        move_duration = self._ramp_to_angle(
+            pin, from_angle, angle, speed, smooth=self._smooth_ramp_for(pin)
+        )
         setattr(self, track_attr, angle)
 
         if self.release_after_move:
@@ -398,7 +428,7 @@ class ServoController:
         if remaining > 0:
             time.sleep(remaining)
 
-    def _move_and_hold(self, pin, angle, track_attr):
+    def _move_and_hold(self, pin, angle, track_attr, speed_override=None, smooth_override=None):
         """Move to angle and keep driving that position indefinitely (no
         release, no return move). Used for servo1's eject/load rotation,
         which should simply stay at whichever end position it last reached.
@@ -409,14 +439,19 @@ class ServoController:
 
         angle = self._clamp_angle(angle)
         from_angle = self._clamp_angle(getattr(self, track_attr, angle))
-        speed = self._speed_for(pin)
+        speed = speed_override if speed_override is not None else self._speed_for(pin)
+        smooth = (
+            smooth_override if smooth_override is not None else self._smooth_ramp_for(pin)
+        )
         speed_desc = f"{speed:g}deg/s" if speed else "max"
         self.log(
             f"Servo GPIO{pin.bcm_pin} -> angle={angle} (from {from_angle}) "
             f"speed={speed_desc}, holding position"
         )
 
-        self._ramp_to_angle(pin, from_angle, angle, speed)
+        self._ramp_to_angle(
+            pin, from_angle, angle, speed, smooth=smooth
+        )
         setattr(self, track_attr, angle)
         # Intentionally do not release: keep driving the signal so the servo
         # holds torque at the target end position.
@@ -454,7 +489,13 @@ class ServoController:
                 if self.eject_door_delay_sec > 0:
                     time.sleep(self.eject_door_delay_sec)
                 t0 = time.monotonic()
-                self._move_and_hold(self._servo1, self.servo1_eject_angle, "_servo1_current_angle")
+                self._move_and_hold(
+                    self._servo1,
+                    self.servo1_eject_angle,
+                    "_servo1_current_angle",
+                    speed_override=self.eject_servo1_speed_deg_per_sec,
+                    smooth_override=self.eject_servo1_smooth_ramp,
+                )
                 self.log(f"Servo eject: servo1 eject move took {time.monotonic() - t0:.2f}s")
 
             door_thread = threading.Thread(target=do_door, daemon=True)
@@ -477,7 +518,13 @@ class ServoController:
         try:
             seq_start = time.monotonic()
             self.log("Servo load sequence started")
-            self._move_and_hold(self._servo1, self.servo1_load_angle, "_servo1_current_angle")
+            self._move_and_hold(
+                self._servo1,
+                self.servo1_load_angle,
+                "_servo1_current_angle",
+                speed_override=self.load_servo1_speed_deg_per_sec,
+                smooth_override=self.load_servo1_smooth_ramp,
+            )
             self.log(f"Servo load sequence finished (total {time.monotonic() - seq_start:.2f}s)")
         except Exception as exc:
             self.log(f"Servo load sequence failed: {exc}")
