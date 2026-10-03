@@ -15,7 +15,7 @@
     "sps": 860,
     "bias": 16384,
     "full_scale_delta": 150,
-    "noise_floor": 80,
+    "noise_floor": 20,
     "samples_per_read": 8,
     "baseline_alpha": 0.10
   },
