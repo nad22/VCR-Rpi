@@ -504,8 +504,12 @@ def dispatch_action(rpc, action, servo_controller=None, display_state=None, soun
     elif action == "Player.GoPrevious":
         rpc.goto_previous()
     elif action == "Input.FastForward":
+        if sound_player is not None and rpc.get_player_state_text() != "STOP":
+            sound_player.play("ff")
         rpc.execute_action("fastforward")
     elif action == "Input.Rewind":
+        if sound_player is not None and rpc.get_player_state_text() != "STOP":
+            sound_player.play("rewind")
         rpc.execute_action("rewind")
     elif action == "Input.Up":
         rpc.execute_action("up")

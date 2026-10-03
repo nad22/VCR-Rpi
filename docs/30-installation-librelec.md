@@ -317,11 +317,18 @@ auf GPIO10 und GPIO11 und kollidiert nicht mit dem Verstaerker.
 2. Kartenname pruefen: `aplay -l` (erwartet z.B. sndrpihifiberry) und ggf. `device` in sounds.json anpassen.
 3. config/deploy/sounds.json nach /storage/.kodi/userdata/addon_data/service.vcr.recorder/ kopieren.
 4. WAV-Dateien nach /storage/.kodi/userdata/addon_data/service.vcr.recorder/sounds/ legen:
-	- load.wav, eject.wav, stop.wav, play.wav (Dateinamen in sounds.json aenderbar)
+	- load.wav, eject.wav, stop.wav, play.wav, ff.wav, rewind.wav (Dateinamen in sounds.json aenderbar)
 5. Direkttest: `aplay -D plughw:CARD=sndrpihifiberry,DEV=0 /pfad/zur/datei.wav`
 
 Ausloeser:
 - LOAD und EJECT: bei jedem Tastendruck.
 - STOP: nur wenn gerade etwas laeuft oder pausiert ist.
 - PLAY: nur beim Fortsetzen aus der Pause (PLAY ohne aktiven Player tut nichts).
+- FF und REWIND: nur wenn gerade etwas laeuft oder pausiert ist.
 - Ein neuer Effekt ersetzt einen noch laufenden.
+
+Lautstaerke (sounds.json):
+- `volume`: globale Lautstaerke in Prozent (100 = Originalpegel, 0 = stumm, bis 200 mit Uebersteuerungsgefahr).
+- `volumes`: optionale Werte pro Effekt, z.B. `{"ff": 60, "load": 80}`; ueberschreibt `volume`.
+- Die Skalierung greift nur bei 16-Bit-PCM-WAV-Dateien; andere Formate laufen mit Originalpegel (Hinweis im Kodi-Log).
+- Aenderungen werden innerhalb weniger Sekunden uebernommen.
