@@ -332,3 +332,15 @@ Lautstaerke (sounds.json):
 - `volumes`: optionale Werte pro Effekt, z.B. `{"ff": 60, "load": 80}`; ueberschreibt `volume`.
 - Die Skalierung greift nur bei 16-Bit-PCM-WAV-Dateien; andere Formate laufen mit Originalpegel (Hinweis im Kodi-Log).
 - Aenderungen werden innerhalb weniger Sekunden uebernommen.
+
+## 9) IdleScreen: zufaelliger Startpunkt bei langen Videos
+
+Idle-Videos, die laenger als eine einstellbare Dauer sind, starten an einer zufaelligen Stelle statt von vorne.
+Einstellungen in config/deploy/idlescreen.json, abzulegen unter
+/storage/.kodi/userdata/addon_data/service.idlescreen/idlescreen.json:
+
+- `random_start.enabled`: true/false, schaltet die Funktion ein oder aus (ohne Datei: an).
+- `random_start.min_duration_minutes`: nur Videos, die laenger sind, springen (Standard 3).
+- `random_start.end_margin_sec`: Mindestabstand des Startpunkts zum Videoende (Standard 60).
+
+Die Datei wird bei jedem Videostart neu gelesen, ein Neustart ist nicht noetig.

@@ -1,0 +1,7 @@
+{
+  "random_start": {
+    "enabled": true,
+    "min_duration_minutes": 3,
+    "end_margin_sec": 60
+  }
+}

@@ -1,3 +1,4 @@
+import json
 import os
 import queue
 import random
@@ -17,6 +18,7 @@ MEDIA_DIR = os.path.join(ADDON_PATH, "resources", "media")
 STATE_DIR = xbmcvfs.translatePath("special://profile/addon_data/service.idlescreen")
 IDLE_STATE_FILE = os.path.join(STATE_DIR, "idle_playback")
 IDLE_TOGGLE_REQUEST = os.path.join(STATE_DIR, "toggle_idle")
+SETTINGS_FILE = os.path.join(STATE_DIR, "idlescreen.json")
 
 
 def log(message, level=xbmc.LOGINFO):
@@ -87,6 +89,50 @@ class IdlePlayer(xbmc.Player):
         self.events.put(("stopped", path))
 
 
+def load_random_start_settings():
+    """Return (enabled, min_duration_sec, end_margin_sec); re-read on every video start."""
+    cfg = {}
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as settings_file:
+            loaded = json.load(settings_file)
+        cfg = loaded.get("random_start", {}) if isinstance(loaded, dict) else {}
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        log(f"Could not read {SETTINGS_FILE}: {exc}; using defaults", xbmc.LOGWARNING)
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    try:
+        min_sec = max(0.0, float(cfg.get("min_duration_minutes", 3))) * 60.0
+        margin = max(0.0, float(cfg.get("end_margin_sec", 60)))
+    except (TypeError, ValueError):
+        min_sec, margin = 180.0, 60.0
+    return bool(cfg.get("enabled", True)), min_sec, margin
+
+
+def seek_to_random_position(player):
+    enabled, min_sec, margin = load_random_start_settings()
+    if not enabled:
+        return False
+
+    try:
+        total = float(player.getTotalTime())
+    except (RuntimeError, TypeError, ValueError):
+        return False
+    if total <= 0 or total <= min_sec:
+        return False
+
+    latest = total - margin
+    if latest <= 0:
+        return False
+
+    target = random.uniform(0.0, latest)
+    player.seekTime(target)
+    log(f"Idle video is {total / 60.0:.1f} min long; random start at {target / 60.0:.1f} min")
+    return True
+
+
 def play_random_video(player, videos, deck, previous=""):
     if not videos:
         return ""
@@ -148,6 +194,7 @@ def run():
                     if normalized in idle_paths:
                         current_idle = path
                         idle_playback_confirmed = True
+                        seek_to_random_position(player)
                     else:
                         current_idle = ""
                         idle_playback_confirmed = False
