@@ -514,6 +514,40 @@ class ServoController:
             with self._lock:
                 self._busy = False
 
+    def _run_boot_eject_sequence(self):
+        try:
+            seq_start = time.monotonic()
+            self.log("Servo boot eject sequence started")
+            self._move(
+                self._servo2,
+                self.servo2_open_angle,
+                self.move_settle_sec,
+                "_servo2_current_angle",
+            )
+            time.sleep(2.0)
+            self._move_and_hold(
+                self._servo1,
+                self.servo1_eject_angle,
+                "_servo1_current_angle",
+                speed_override=self.eject_servo1_speed_deg_per_sec,
+                smooth_override=self.eject_servo1_smooth_ramp,
+            )
+            time.sleep(2.0)
+            self._move(
+                self._servo2,
+                self.servo2_closed_angle,
+                self.move_settle_sec,
+                "_servo2_current_angle",
+            )
+            self.log(
+                f"Servo boot eject sequence finished (total {time.monotonic() - seq_start:.2f}s)"
+            )
+        except Exception as exc:
+            self.log(f"Servo boot eject sequence failed: {exc}")
+        finally:
+            with self._lock:
+                self._busy = False
+
     def _run_load_sequence(self):
         try:
             seq_start = time.monotonic()
@@ -547,6 +581,10 @@ class ServoController:
         """Servo 1 triggers the eject mechanism, then servo 2 opens the
         front-flap door and closes it again after door_open_hold_sec."""
         return self._start_sequence(self._run_eject_sequence)
+
+    def trigger_boot_eject(self):
+        """Open the door, eject after five seconds, then close five seconds later."""
+        return self._start_sequence(self._run_boot_eject_sequence)
 
     def trigger_load(self):
         """Servo 1 pulls the cassette in; servo 2 is not touched."""

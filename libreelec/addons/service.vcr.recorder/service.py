@@ -744,7 +744,7 @@ def run():
                         servo_controller = ServoController(servos_cfg, log_fn=log)
                         log("Servo controller initialized")
                         if boot_eject_pending and bool(servos_cfg.get("eject_on_boot", True)):
-                            servo_controller.trigger_eject()
+                            servo_controller.trigger_boot_eject()
                             log("Boot eject triggered to clear any inserted cassette")
                     except Exception as exc:
                         servo_controller = None

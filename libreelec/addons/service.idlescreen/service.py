@@ -207,7 +207,7 @@ def run():
                     previous_idle = path
                     current_idle = ""
                     idle_playback_confirmed = False
-                    next_idle_at = now + 0.5
+                    next_idle_at = now
 
                 elif event == "stopped" and normalized in idle_paths:
                     current_idle = ""
