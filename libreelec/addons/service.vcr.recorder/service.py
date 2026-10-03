@@ -803,14 +803,37 @@ def run():
                         probe_mode = str(display_cfg.get("probe_mode", "cmd")).lower()
                         i2c_devices = sorted(glob.glob("/dev/i2c-*"))
                         log(f"SSD1309 config: bus={bus_value}, address=0x{addr:02X}, probe_mode={probe_mode}, i2c_devices={i2c_devices or ['none']}")
+                        shift_cfg = display_cfg.get("pixel_shift", {})
+                        shift_cfg = shift_cfg if isinstance(shift_cfg, dict) else {}
+                        try:
+                            if "interval_sec" in shift_cfg:
+                                shift_sec = float(shift_cfg["interval_sec"])
+                            else:
+                                shift_sec = float(shift_cfg.get("interval_minutes", 1)) * 60.0
+                            shift_pixels = int(shift_cfg.get("pixels", 1))
+                        except (TypeError, ValueError):
+                            shift_sec, shift_pixels = 60.0, 1
+                        if not bool(shift_cfg.get("enabled", True)):
+                            shift_sec = 0.0
                         display = SSD1309Display(
                             bus=bus_value,
                             address=addr,
                             probe_mode=probe_mode,
                             invert=bool(display_cfg.get("invert", False)),
                             rotate180=bool(display_cfg.get("rotate180", False)),
+                            pixel_shift_interval_sec=shift_sec,
+                            pixel_shift_pixels=shift_pixels,
                         )
                         log(f"SSD1309 display initialized on {getattr(display, '_resolved_dev', 'unknown')}")
+                        shift_on = display.pixel_shift_interval_sec > 0 and display.pixel_shift_pixels > 0
+                        log(
+                            "OLED pixel shift: "
+                            + (
+                                f"every {display.pixel_shift_interval_sec:g} s, {display.pixel_shift_pixels} px"
+                                if shift_on
+                                else "off"
+                            )
+                        )
                     except Exception as exc:
                         display = None
                         log(f"SSD1309 init failed: {exc}")

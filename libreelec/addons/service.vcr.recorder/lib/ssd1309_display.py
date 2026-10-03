@@ -2,6 +2,7 @@ import fcntl
 import math
 import os
 import glob
+import time
 
 
 I2C_SLAVE = 0x0703
@@ -56,12 +57,26 @@ class SSD1309Display:
     HEIGHT = 64
     PAGES = 8
 
-    def __init__(self, bus=1, address=0x3C, invert=False, rotate180=False, probe_mode="cmd"):
+    MAX_SHIFT_PIXELS = 16
+
+    def __init__(
+        self,
+        bus=1,
+        address=0x3C,
+        invert=False,
+        rotate180=False,
+        probe_mode="cmd",
+        pixel_shift_interval_sec=0,
+        pixel_shift_pixels=1,
+    ):
         self.bus = bus
         self.address = address
         self.invert = bool(invert)
         self.rotate180 = bool(rotate180)
         self.probe_mode = str(probe_mode or "cmd").lower()
+        self.pixel_shift_interval_sec = max(0.0, float(pixel_shift_interval_sec or 0))
+        self.pixel_shift_pixels = max(0, min(self.MAX_SHIFT_PIXELS, int(pixel_shift_pixels or 0)))
+        self._shift_origin = time.monotonic()
         self.fd = None
         self.buffer = bytearray(self.WIDTH * self.PAGES)
         self._resolved_dev = None
@@ -603,10 +618,45 @@ class SSD1309Display:
         self.draw_text(38, 34, "PLEASE WAIT")
         self.flush()
 
+    def _current_shift(self):
+        n = self.pixel_shift_pixels
+        if self.pixel_shift_interval_sec <= 0 or n <= 0:
+            return 0, 0
+        # Start, right, down, left, up (= start again), each leg n pixels.
+        path = ((0, 0), (n, 0), (n, n), (0, n))
+        step = int((time.monotonic() - self._shift_origin) // self.pixel_shift_interval_sec)
+        return path[step % len(path)]
+
+    def _shifted_buffer(self):
+        dx, dy = self._current_shift()
+        if dx == 0 and dy == 0:
+            return self.buffer
+
+        width = self.WIDTH
+        page_shift, bit_shift = divmod(dy, 8)
+        zero_row = bytes(width)
+        rows = [bytes(self.buffer[p * width:(p + 1) * width]) for p in range(self.PAGES)]
+
+        shifted = bytearray(len(self.buffer))
+        for page in range(self.PAGES):
+            src = page - page_shift
+            row = rows[src] if 0 <= src < self.PAGES else zero_row
+            if bit_shift:
+                # LSB is the top pixel of a page; the lowest rows carry into the next page.
+                above = rows[src - 1] if 0 <= src - 1 < self.PAGES else zero_row
+                row = bytes(
+                    ((b << bit_shift) & 0xFF) | (a >> (8 - bit_shift)) for b, a in zip(row, above)
+                )
+            if dx:
+                row = bytes(min(dx, width)) + row[:max(0, width - dx)]
+            shifted[page * width:(page + 1) * width] = row
+        return shifted
+
     def flush(self):
         self._cmd(0x21, 0x00, self.WIDTH - 1)
         self._cmd(0x22, 0x00, self.PAGES - 1)
+        buffer = self._shifted_buffer()
         for page in range(self.PAGES):
             start = page * self.WIDTH
-            chunk = self.buffer[start:start + self.WIDTH]
+            chunk = buffer[start:start + self.WIDTH]
             self._write(bytes([0x40]) + bytes(chunk))

@@ -21,6 +21,11 @@
   },
   "invert": false,
   "rotate180": false,
+  "pixel_shift": {
+    "enabled": true,
+    "interval_sec": 90,
+    "pixels": 3
+  },
   "bluetooth_remote": {
     "enabled": true,
     "device_name": "VCR_REMOTE",
