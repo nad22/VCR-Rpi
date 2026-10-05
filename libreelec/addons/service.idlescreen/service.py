@@ -63,6 +63,7 @@ class IdlePlayer(xbmc.Player):
         self.events = queue.Queue()
         self.last_file = ""
         self.idle_paths = idle_paths
+        self.intentional_stop = False
 
     def onAVStarted(self):
         path = self.getPlayingFile()
@@ -75,7 +76,8 @@ class IdlePlayer(xbmc.Player):
             path = self.getPlayingFile()
         except RuntimeError:
             path = ""
-        self.events.put(("ended", path or self.last_file))
+        path = path or self.last_file
+        self.events.put(("ended", path))
 
     def onPlayBackStopped(self):
         try:
@@ -83,10 +85,16 @@ class IdlePlayer(xbmc.Player):
         except RuntimeError:
             path = ""
         path = path or self.last_file
-        if normalized_path(path) in self.idle_paths:
-            set_idle_state(False)
-            log(f"Idle playback stop callback received: {os.path.basename(path)}")
-        self.events.put(("stopped", path))
+        normalized = normalized_path(path)
+        if self.intentional_stop:
+            self.intentional_stop = False
+            self.events.put(("stopped", path))
+            return
+        if normalized in self.idle_paths:
+            log(f"Treating idle stop as video end and continuing: {os.path.basename(path)}")
+            self.events.put(("ended", path))
+        else:
+            self.events.put(("stopped", path))
 
 
 def load_random_start_settings():
@@ -175,11 +183,13 @@ def run():
     previous_idle = ""
     next_idle_at = 0.0
     stop_deadline = 0.0
+    playback_start_deadline = 0.0
     next_marker_refresh = time.monotonic() + 5.0
     random_deck = []
 
     if automation_enabled:
         current_idle = play_random_video(player, videos, random_deck)
+        playback_start_deadline = time.monotonic() + 10.0
 
     while not monitor.abortRequested():
         now = time.monotonic()
@@ -191,6 +201,7 @@ def run():
 
                 if event == "started":
                     stop_deadline = 0.0
+                    playback_start_deadline = 0.0
                     if normalized in idle_paths:
                         current_idle = path
                         idle_playback_confirmed = True
@@ -234,12 +245,11 @@ def run():
             previous_idle = current_idle
             current_idle = ""
             idle_playback_confirmed = False
-            automation_enabled = False
+            automation_enabled = True
             external_playback_active = False
-            next_idle_at = 0.0
+            next_idle_at = now
             set_idle_state(False)
-            stop_deadline = now + 0.5
-            log("Idle playback stopped; cleared OLED marker and waiting for toggle")
+            log("Idle playback ended without callback; continuing with next video")
 
         if os.path.exists(IDLE_TOGGLE_REQUEST):
             try:
@@ -259,6 +269,7 @@ def run():
                     next_idle_at = 0.0
                     set_idle_state(False)
                     stop_deadline = now + 0.5
+                    player.intentional_stop = True
                     player.stop()
                     log("IdleScreen toggled off; returning to Kodi home")
                 else:
@@ -268,6 +279,7 @@ def run():
                     next_idle_at = 0.0
                     idle_playback_confirmed = False
                     current_idle = play_random_video(player, videos, random_deck, previous_idle)
+                    playback_start_deadline = now + 10.0 if current_idle else 0.0
                     log("IdleScreen toggled on by RESET button")
 
         if player.isPlaying():
@@ -284,6 +296,20 @@ def run():
             automation_enabled = True
             next_idle_at = now + 0.5
             log("External playback no longer active; resuming idle loop")
+
+        if (
+            automation_enabled
+            and current_idle
+            and not idle_playback_confirmed
+            and playback_start_deadline
+            and now >= playback_start_deadline
+            and not player.isPlaying()
+        ):
+            log(f"Idle video did not start: {os.path.basename(current_idle)}; trying another")
+            previous_idle = current_idle
+            current_idle = ""
+            playback_start_deadline = 0.0
+            next_idle_at = now
 
         if (
             current_idle
@@ -307,6 +333,7 @@ def run():
             if not player.isPlaying():
                 next_idle_at = 0.0
                 current_idle = play_random_video(player, videos, random_deck, previous_idle)
+                playback_start_deadline = now + 10.0 if current_idle else 0.0
             else:
                 next_idle_at = now + 0.5
 
