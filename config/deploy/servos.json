@@ -9,7 +9,7 @@
   "release_after_move": false,
   "pwm_chip": "pwmchip0",
   "speed_deg_per_sec": null,
-  "eject_on_boot": true,
+  "eject_on_boot": false,
   "servo1": {
     "pin": 13,
     "pwm_channel": 1,
