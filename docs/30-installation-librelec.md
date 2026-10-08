@@ -34,6 +34,24 @@ Alternativ direkt die produktionsnahen Vorlagen verwenden:
 	- ohne gpioget direkt backend=sysfs nutzen
 	- ob gpiochip0 der richtige Chip ist (ggf. gpiochip4)
 
+## 4a) Servos mit Hardware-PWM (Raspberry Pi 4)
+
+Die Servoausgaenge verwenden ausschliesslich die PWM-Hardware des Pi; es gibt keinen zeitkritischen Software-PWM-Fallback.
+Fuer die Referenzbelegung GPIO12/PWM0 und GPIO13/PWM1 muss in `/flash/config.txt` stehen:
+
+```text
+dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
+```
+
+Danach den Pi neu starten. Das Add-on erwartet `/sys/class/pwm/pwmchip0` mit den Kanaelen 0 und 1. Fehlt das
+Kernel-PWM-Geraet, initialisiert es die Servos nicht und protokolliert den konkreten Fehler; es verwendet bewusst
+kein bit-banging. `servos.json` muss GPIO12/Kanal0 und GPIO13/Kanal1 zuordnen. Servo-Stromversorgung separat
+dimensionieren und Masse von Pi und Servoversorgung gemeinsam verbinden.
+
+Der LOAD-Endschalter liegt gemaess Verdrahtungsplan auf GPIO0 (physischer Pin 27). GPIO0 ist nur frei, wenn kein
+HAT-ID-EEPROM an den Pins 27/28 angeschlossen ist. Der Load-Lauf endet bei Endschalter-Ausloesung oder nach dem
+konfigurierten `load.servo1_max_run_sec`-Sicherheitslimit.
+
 ## 5) SSD1309 Display (VFD Design)
 
 1. Display-Konfig in display.json setzen:

@@ -51,6 +51,7 @@ Jeder Taster hat 2 Pins:
 | Next | GPIO24 |
 | Previous | GPIO25 |
 | Go Start | GPIO26 |
+| Kassetten-Endschalter (LOAD_STOP) | GPIO0 |
 | Power (Shutdown-Signal) | GPIO11 |
 | Power (Latch-Hold-Ausgang) | GPIO10 |
 
@@ -64,6 +65,13 @@ Hinweis Power-Taster: GPIO10 und GPIO11 NICHT in buttons.json eintragen. Diese P
 Kernel-Overlays gpio-poweroff/gpio-shutdown verwaltet (siehe docs/30-installation-librelec.md Abschnitt 7). Der
 Taster selbst haengt nicht direkt an GND, sondern an der P-MOSFET/NPN-Latch-Schaltung (siehe dort fuer die komplette
 Verdrahtung inkl. Bauteile).
+
+LOAD_STOP-Endschalter: GPIO0 (physischer Pin 27) ueber einen Schliesserkontakt nach GND verdrahten. In
+buttons.json ist `active_low=true` und `pull=up` gesetzt. GPIO0/GPIO1 sind beim Raspberry Pi fuer die HAT-ID-EEPROM-
+Schnittstelle vorgesehen; diese Belegung nur verwenden, wenn kein HAT/EEPROM an den Pins 27/28 angeschlossen ist.
+Beim Ausloesen stoppt Servo 1 sofort; der Load-Lauf hat zusaetzlich ein 10-Sekunden-Sicherheitslimit.
+Beim Eject dreht Servo 1 in Eject-Richtung, solange der LOAD-Schalter aktiv ist, und stoppt bei Neutralstellung
+(ebenfalls mit `eject.servo1_max_run_sec` als 10-Sekunden-Sicherheitslimit).
 
 ## Erstinbetriebnahme-Checkliste
 

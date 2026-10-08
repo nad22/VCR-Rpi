@@ -296,6 +296,14 @@ class GpioButtonReader:
         self.initialized = False
         self.states = {}
 
+    def is_pressed(self, event_name):
+        event_name = str(event_name).upper()
+        for btn in self.buttons:
+            if str(btn.get("event", "")).upper() == event_name:
+                pin = int(btn.get("_sysfs_pin", btn["pin"]))
+                return bool(self.states.get(pin, {}).get("pressed", False))
+        return False
+
     def read_events(self):
         if not self.initialized:
             return []
@@ -318,11 +326,19 @@ class GpioButtonReader:
                     f"GPIO edge name={btn.get('name', '?')} bcm={btn.get('pin', '?')} "
                     f"sysfs={pin} event={btn.get('event', '?')} pressed={pressed} raw={value}"
                 )
-                if pressed:
-                    debounce_ms = int(btn.get("debounce_ms", 50))
-                    if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
+                debounce_ms = int(btn.get("debounce_ms", 50))
+                if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
+                    is_load_switch = (
+                        str(btn.get("event", "")).upper() == "LOAD"
+                        or btn.get("action") == "Servo.Load"
+                    )
+                    is_load_endstop = str(btn.get("event", "")).upper() == "LOAD_STOP"
+                    if pressed:
                         st["last_event_at"] = now
                         events.append(btn["event"])
+                    elif is_load_switch or is_load_endstop:
+                        st["last_event_at"] = now
+                        events.append(f"{btn['event']}_RELEASED")
 
         return events
 
@@ -400,6 +416,14 @@ class GpiodCliButtonReader:
         self.initialized = False
         self.states = {}
 
+    def is_pressed(self, event_name):
+        event_name = str(event_name).upper()
+        for btn in self.buttons:
+            if str(btn.get("event", "")).upper() == event_name:
+                pin = int(btn["pin"])
+                return bool(self.states.get(pin, {}).get("pressed", False))
+        return False
+
     def read_events(self):
         if not self.initialized:
             return []
@@ -426,11 +450,19 @@ class GpiodCliButtonReader:
                     f"gpiod edge name={btn.get('name', '?')} bcm={pin} "
                     f"event={btn.get('event', '?')} pressed={pressed} level={level}"
                 )
-                if pressed:
-                    debounce_ms = int(btn.get("debounce_ms", 50))
-                    if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
+                debounce_ms = int(btn.get("debounce_ms", 50))
+                if (now - st["last_event_at"]) * 1000.0 >= debounce_ms:
+                    is_load_switch = (
+                        str(btn.get("event", "")).upper() == "LOAD"
+                        or btn.get("action") == "Servo.Load"
+                    )
+                    is_load_endstop = str(btn.get("event", "")).upper() == "LOAD_STOP"
+                    if pressed:
                         st["last_event_at"] = now
                         events.append(btn["event"])
+                    elif is_load_switch or is_load_endstop:
+                        st["last_event_at"] = now
+                        events.append(f"{btn['event']}_RELEASED")
 
         return events
 
@@ -485,7 +517,15 @@ def build_gpio_buttons(cfg):
     return buttons
 
 
-def dispatch_action(rpc, action, servo_controller=None, display_state=None, sound_player=None):
+def dispatch_action(
+    rpc,
+    action,
+    servo_controller=None,
+    display_state=None,
+    sound_player=None,
+    load_switch_active=False,
+    load_endstop_active=False,
+):
     if action in ("Player.PlayPause", "Player.Play"):
         # Play sound only when resuming from pause; PLAY on an idle player does nothing.
         if sound_player is not None and rpc.get_player_state_text() == "PAUSE":
@@ -539,9 +579,19 @@ def dispatch_action(rpc, action, servo_controller=None, display_state=None, soun
         if sound_player is not None:
             sound_player.play("load")
         if servo_controller is not None:
-            servo_controller.trigger_load()
+            servo_controller.trigger_load(
+                switch_active=load_switch_active,
+                endstop_active=load_endstop_active,
+            )
         else:
             log("Servo.Load requested but no servo controller is active")
+    elif action == "Servo.LoadStop":
+        if servo_controller is not None:
+            servo_controller.set_load_endstop_active(True)
+            stopped = servo_controller.stop_load()
+            log("LOAD endstop triggered; stopping servo 1" if stopped else "LOAD endstop active")
+        else:
+            log("Servo.LoadStop requested but no servo controller is active")
     elif action in ("System.RestartKodi", "IdleScreen.Toggle", "IdleScreen.Activate"):
         try:
             os.makedirs(os.path.dirname(IDLE_TOGGLE_REQUEST), exist_ok=True)
@@ -743,6 +793,13 @@ def run():
                     try:
                         servo_controller = ServoController(servos_cfg, log_fn=log)
                         log("Servo controller initialized")
+                        if gpio_reader is not None:
+                            servo_controller.set_load_switch_active(
+                                gpio_reader.is_pressed("LOAD")
+                            )
+                            servo_controller.set_load_endstop_active(
+                                gpio_reader.is_pressed("LOAD_STOP")
+                            )
                         if boot_eject_pending and bool(servos_cfg.get("eject_on_boot", True)):
                             servo_controller.trigger_boot_eject()
                             log("Boot eject triggered to clear any inserted cassette")
@@ -870,8 +927,22 @@ def run():
 
         if gpio_reader is not None:
             events = gpio_reader.read_events()
+            if servo_controller is not None:
+                servo_controller.set_load_switch_active(gpio_reader.is_pressed("LOAD"))
+                servo_controller.set_load_endstop_active(gpio_reader.is_pressed("LOAD_STOP"))
             for event in events:
                 event_upper = str(event).upper()
+                if event_upper.endswith("_RELEASED"):
+                    base_event = event_upper[:-9]
+                    release_action = button_map.get(base_event)
+                    if release_action is None:
+                        release_action = resolve_builtin_action(base_event)
+                    if release_action == "Servo.Load" and servo_controller is not None:
+                        servo_controller.set_load_switch_active(False)
+                        log("LOAD switch released; servo load is re-armed")
+                    elif release_action == "Servo.LoadStop" and servo_controller is not None:
+                        servo_controller.set_load_endstop_active(False)
+                    continue
                 action = button_map.get(event_upper)
                 if action is None:
                     action = resolve_builtin_action(event_upper)
@@ -882,6 +953,12 @@ def run():
                         servo_controller=servo_controller,
                         display_state=display_state,
                         sound_player=sound_player,
+                        load_switch_active=(action == "Servo.Load"),
+                        load_endstop_active=(
+                            gpio_reader.is_pressed("LOAD_STOP")
+                            if gpio_reader is not None and action == "Servo.Load"
+                            else False
+                        ),
                     )
                     log(f"GPIO event {event_upper} -> {action}")
                 else:
