@@ -27,37 +27,11 @@ class BluetoothRemoteReader:
         self.connected_channel = None
         self._rx_buffer = ""
         self._last_rx_log_at = 0.0
-        self._last_link_check_at = 0.0
-        self._link_check_interval_sec = 2.0
         self._event_pattern = re.compile(
             r"(PLAY_PAUSE|PLAY|GO_START|STOP|NEXT|PREV|FF|RW|UP|DOWN|LEFT|RIGHT|OK|BACK|CHAPTER_NEXT|CHAPTER_PREV|SEEK:[+-]?\d+(?:\.\d+)?)",
             re.IGNORECASE,
         )
         self._discover_device()
-
-    def _is_link_connected(self):
-        """Return True when BlueZ reports an active ACL link to the remote."""
-        if not self.device_addr:
-            return False
-
-        now = time.time()
-        if (now - self._last_link_check_at) < self._link_check_interval_sec:
-            return True
-
-        self._last_link_check_at = now
-        try:
-            result = subprocess.run(
-                ["bluetoothctl", "info", self.device_addr],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            out = (result.stdout or "") + "\n" + (result.stderr or "")
-            return "Connected: yes" in out
-        except Exception as exc:
-            xbmc.log(f"[BT_REMOTE] Link check failed: {exc}", xbmc.LOGINFO)
-            # Do not tear down a working stream because of a transient tool issue.
-            return True
 
     def _connect_via_rfcomm_tty(self):
         """Fallback for systems where Python lacks AF_BLUETOOTH (e.g. some LibreELEC builds)."""
@@ -219,10 +193,6 @@ class BluetoothRemoteReader:
         if not self.initialized or (self.socket is None and self.rfcomm_file is None):
             return events
 
-        # Detect remote power-cycle/disconnect and force service-level reconnect.
-        if not self._is_link_connected():
-            raise ConnectionError("Bluetooth link lost")
-        
         try:
             if self.socket is not None:
                 data = self.socket.recv(1024).decode("utf-8", errors="ignore")
@@ -230,7 +200,7 @@ class BluetoothRemoteReader:
                 try:
                     chunk = os.read(self.rfcomm_file, 1024)
                     if not chunk:
-                        return events
+                        raise ConnectionError("RFCOMM peer closed the connection")
                     data = chunk.decode("utf-8", errors="ignore")
                 except OSError as exc:
                     if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
@@ -240,7 +210,7 @@ class BluetoothRemoteReader:
                 return events
 
             if not data:
-                return events
+                raise ConnectionError("Bluetooth peer closed the connection")
 
             # Throttled low-level RX debug, useful for diagnosing silent button presses.
             try:

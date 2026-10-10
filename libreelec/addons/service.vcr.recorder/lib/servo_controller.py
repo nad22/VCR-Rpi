@@ -121,6 +121,9 @@ class ServoController:
         self.servo2_angle = None
 
         self.eject_door_delay_sec = max(0.0, float(eject_cfg.get("door_delay_sec", 0.4)))
+        self.eject_start_delay_sec = max(
+            0.0, float(eject_cfg.get("start_delay_sec", 0.0))
+        )
         self.eject_door_open_hold_sec = max(0.0, float(eject_cfg.get("door_open_hold_sec", 3.0)))
         self.boot_step_delay_sec = max(0.0, float(eject_cfg.get("boot_step_delay_sec", 5.0)))
 
@@ -347,6 +350,15 @@ class ServoController:
             return True
 
     def trigger_eject(self):
+        def delayed_eject():
+            if self.eject_start_delay_sec:
+                self.log(
+                    f"Servo eject: waiting {self.eject_start_delay_sec:.2f}s before starting"
+                )
+                if self._wait(self.eject_start_delay_sec):
+                    return
+            self._run_eject_sequence()
+
         with self._lock:
             active_worker = self._worker if self._busy and self._sequence_label != "eject" else None
             if active_worker is not None:
@@ -357,7 +369,7 @@ class ServoController:
                 return False
         if active_worker is not None:
             active_worker.join()
-        return self._start_sequence(self._run_eject_sequence, "eject")
+        return self._start_sequence(delayed_eject, "eject")
 
     def trigger_boot_eject(self):
         return self._start_sequence(self._run_boot_eject_sequence, "boot-eject")

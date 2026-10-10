@@ -27,6 +27,7 @@
   },
   "eject": {
     "servo1_max_run_sec": 1.5,
+    "start_delay_sec": 1.0,
     "door_delay_sec": 0.5,
     "door_open_hold_sec": 1.5,
     "boot_step_delay_sec": 5.0
